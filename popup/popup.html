@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal/Noise Ratio</title>
+  <link rel="stylesheet" href="popup.css">
+  <script src="../content/waveform.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Signal/Noise Ratio</h1>
+      <div class="status" id="status">
+        <span class="status-indicator"></span>
+        <span class="status-text">Active</span>
+      </div>
+    </header>
+
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-value" id="signal-count">0</div>
+        <div class="stat-label">Signal</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="noise-count">0</div>
+        <div class="stat-label">Noise</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="ratio-percent">0%</div>
+        <div class="stat-label">Ratio</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="view-toggle">
+        <button class="view-btn active" data-view="waveform">Waveform</button>
+        <button class="view-btn" data-view="chart">Chart</button>
+      </div>
+      <canvas id="ratio-chart" width="300" height="100" style="display: none;"></canvas>
+      <canvas id="popup-waveform" width="300" height="100"></canvas>
+    </div>
+
+    <div class="controls">
+      <label class="toggle">
+        <input type="checkbox" id="auto-hide" />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Auto-hide noise</span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" id="show-indicators" checked />
+        <span class="toggle-slider"></span>
+        <span class="toggle-label">Show indicators</span>
+      </label>
+
+      <div class="threshold-control">
+        <label for="threshold">Noise threshold:</label>
+        <input type="range" id="threshold" min="0" max="100" value="30" />
+        <span id="threshold-value">30%</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="refresh-btn" class="btn btn-primary">Refresh Analysis</button>
+      <button id="settings-btn" class="btn btn-secondary">Settings</button>
+    </div>
+
+    <div class="footer">
+      <p>Analyzed <span id="total-tweets">0</span> tweets this session</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

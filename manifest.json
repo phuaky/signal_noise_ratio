@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Signal/Noise Ratio for X",
+  "version": "1.0.0",
+  "description": "Visualize the signal-to-noise ratio of your X (Twitter) feed to combat mindless scrolling",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "http://localhost:3001/*"
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://twitter.com/*", "https://x.com/*"],
+      "js": ["utils/logger.js", "content/llm-service.js", "content/analyzer.js", "content/training-ui.js", "content/waveform.js", "content/analysis-queue.js", "content/viewport-observer.js", "content/debug-panel.js", "content/content.js"],
+      "css": ["content/styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "48": "assets/icons/icon-48.png",
+    "128": "assets/icons/icon-128.png"
+  }
+}

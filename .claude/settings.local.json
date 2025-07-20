@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(ollama list:*)",
+      "Bash(chmod:*)",
+      "Bash(./test-api.sh:*)",
+      "Bash(ollama pull:*)",
+      "Bash(pkill:*)",
+      "Bash(true)"
+    ],
+    "deny": []
+  }
+}

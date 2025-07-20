@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal/Noise Ratio - Ollama Monitor</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: #6b7280;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .card h2 {
+      font-size: 18px;
+      margin-bottom: 15px;
+      color: #374151;
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .status-indicator.connected {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status-indicator.disconnected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .status-indicator.checking {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .metric:last-child {
+      border-bottom: none;
+    }
+
+    .metric-label {
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    .metric-value {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .model-list {
+      list-style: none;
+    }
+
+    .model-item {
+      padding: 8px 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .model-size {
+      color: #6b7280;
+      font-size: 12px;
+    }
+
+    #testArea {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+
+    .result {
+      padding: 12px;
+      background: #f9fafb;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .result.signal {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .result.noise {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .log-entry {
+      padding: 8px;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .log-entry.error {
+      background: #fee2e2;
+    }
+
+    .log-entry.success {
+      background: #d1fae5;
+    }
+
+    #logContainer {
+      max-height: 300px;
+      overflow-y: auto;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 10px;
+    }
+
+    .chart-container {
+      height: 200px;
+      position: relative;
+      margin-top: 15px;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .switch input[type="checkbox"] {
+      width: 40px;
+      height: 20px;
+      appearance: none;
+      background: #d1d5db;
+      border-radius: 20px;
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s;
+    }
+
+    .switch input[type="checkbox"]:checked {
+      background: #3b82f6;
+    }
+
+    .switch input[type="checkbox"]::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      top: 2px;
+      left: 2px;
+      transition: transform 0.2s;
+    }
+
+    .switch input[type="checkbox"]:checked::after {
+      transform: translateX(20px);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Signal/Noise Ratio - Ollama Monitor</h1>
+      <p class="subtitle">Real-time monitoring and testing for local LLM integration</p>
+    </header>
+
+    <div class="grid">
+      <!-- Connection Status -->
+      <div class="card">
+        <h2>Connection Status</h2>
+        <div id="connectionStatus" class="status-indicator checking">
+          <span class="status-dot"></span>
+          <span>Checking...</span>
+        </div>
+        
+        <div style="margin-top: 20px;">
+          <div class="metric">
+            <span class="metric-label">Server URL</span>
+            <span class="metric-value">http://localhost:3001</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Ollama Status</span>
+            <span class="metric-value" id="ollamaStatus">-</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Last Check</span>
+            <span class="metric-value" id="lastCheck">-</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Available Models -->
+      <div class="card">
+        <h2>Available Models</h2>
+        <ul id="modelList" class="model-list">
+          <li class="model-item">Checking...</li>
+        </ul>
+      </div>
+
+      <!-- Performance Metrics -->
+      <div class="card">
+        <h2>Performance Metrics</h2>
+        <div class="metric">
+          <span class="metric-label">Total Requests</span>
+          <span class="metric-value" id="totalRequests">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Average Response Time</span>
+          <span class="metric-value" id="avgResponseTime">-</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Success Rate</span>
+          <span class="metric-value" id="successRate">-</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="performanceChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Interface -->
+    <div class="card">
+      <h2>Test Tweet Analysis</h2>
+      <div id="testArea">
+        <textarea id="testTweet" rows="3" placeholder="Enter a tweet to test analysis...">Just launched our new AI-powered analytics platform! Check it out at https://example.com</textarea>
+        
+        <div class="controls">
+          <button id="analyzeBtn" onclick="analyzeTweet()">Analyze Tweet</button>
+          <div class="switch">
+            <input type="checkbox" id="autoRefresh" checked>
+            <label for="autoRefresh">Auto-refresh (5s)</label>
+          </div>
+        </div>
+        
+        <div id="testResult"></div>
+      </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="card">
+      <h2>Activity Log</h2>
+      <div id="logContainer"></div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let metrics = {
+      totalRequests: 0,
+      successfulRequests: 0,
+      responseTimes: [],
+      chartData: []
+    };
+
+    let refreshInterval;
+    let performanceChart;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      checkConnection();
+      initChart();
+      
+      // Auto-refresh toggle
+      document.getElementById('autoRefresh').addEventListener('change', (e) => {
+        if (e.target.checked) {
+          startAutoRefresh();
+        } else {
+          stopAutoRefresh();
+        }
+      });
+      
+      // Start auto-refresh if enabled
+      if (document.getElementById('autoRefresh').checked) {
+        startAutoRefresh();
+      }
+    });
+
+    function startAutoRefresh() {
+      refreshInterval = setInterval(checkConnection, 5000);
+    }
+
+    function stopAutoRefresh() {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+        refreshInterval = null;
+      }
+    }
+
+    async function checkConnection() {
+      const statusEl = document.getElementById('connectionStatus');
+      statusEl.className = 'status-indicator checking';
+      statusEl.innerHTML = '<span class="status-dot"></span><span>Checking...</span>';
+      
+      try {
+        const response = await fetch('http://localhost:3001/health');
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+          statusEl.className = 'status-indicator connected';
+          statusEl.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
+          
+          // Update Ollama status
+          document.getElementById('ollamaStatus').textContent = 
+            data.ollama.connected ? 'Connected' : 'Not Connected';
+          
+          // Update models
+          updateModelList(data.ollama.models);
+          
+          addLog('Health check successful', 'success');
+        } else {
+          throw new Error('Server not ready');
+        }
+      } catch (error) {
+        statusEl.className = 'status-indicator disconnected';
+        statusEl.innerHTML = '<span class="status-dot"></span><span>Disconnected</span>';
+        document.getElementById('ollamaStatus').textContent = 'Error';
+        addLog(`Connection error: ${error.message}`, 'error');
+      }
+      
+      // Update last check time
+      document.getElementById('lastCheck').textContent = 
+        new Date().toLocaleTimeString();
+    }
+
+    function updateModelList(models) {
+      const listEl = document.getElementById('modelList');
+      
+      if (!models || models.length === 0) {
+        listEl.innerHTML = '<li class="model-item">No models available</li>';
+        return;
+      }
+      
+      listEl.innerHTML = models.map(model => `
+        <li class="model-item">
+          <span>${model.name}</span>
+          <span class="model-size">${formatSize(model.size)}</span>
+        </li>
+      `).join('');
+    }
+
+    function formatSize(bytes) {
+      if (!bytes) return '-';
+      const gb = bytes / (1024 * 1024 * 1024);
+      return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    }
+
+    async function analyzeTweet() {
+      const tweetText = document.getElementById('testTweet').value.trim();
+      const resultEl = document.getElementById('testResult');
+      const analyzeBtn = document.getElementById('analyzeBtn');
+      
+      if (!tweetText) {
+        resultEl.innerHTML = '<div class="result">Please enter a tweet to analyze</div>';
+        return;
+      }
+      
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = 'Analyzing...';
+      resultEl.innerHTML = '<div class="result">Analyzing...</div>';
+      
+      const startTime = Date.now();
+      metrics.totalRequests++;
+      
+      try {
+        const response = await fetch('http://localhost:3001/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: tweetText })
+        });
+        
+        const data = await response.json();
+        const responseTime = Date.now() - startTime;
+        
+        if (response.ok) {
+          metrics.successfulRequests++;
+          metrics.responseTimes.push(responseTime);
+          updateMetrics();
+          
+          const resultClass = data.isSignal ? 'signal' : 'noise';
+          resultEl.innerHTML = `
+            <div class="result ${resultClass}">
+              <strong>${data.isSignal ? 'SIGNAL' : 'NOISE'}</strong> 
+              (Score: ${data.score}/100)<br>
+              ${data.reasoning || data.reason || ''}<br>
+              <small>Response time: ${responseTime}ms</small>
+            </div>
+          `;
+          
+          addLog(`Analysis complete: ${data.isSignal ? 'Signal' : 'Noise'} (${responseTime}ms)`, 'success');
+        } else {
+          throw new Error(data.error || 'Analysis failed');
+        }
+      } catch (error) {
+        resultEl.innerHTML = `
+          <div class="result noise">
+            <strong>Error:</strong> ${error.message}
+          </div>
+        `;
+        addLog(`Analysis error: ${error.message}`, 'error');
+      } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = 'Analyze Tweet';
+      }
+    }
+
+    function updateMetrics() {
+      // Update counters
+      document.getElementById('totalRequests').textContent = metrics.totalRequests;
+      
+      // Calculate average response time
+      if (metrics.responseTimes.length > 0) {
+        const avg = metrics.responseTimes.reduce((a, b) => a + b, 0) / metrics.responseTimes.length;
+        document.getElementById('avgResponseTime').textContent = `${Math.round(avg)}ms`;
+      }
+      
+      // Calculate success rate
+      if (metrics.totalRequests > 0) {
+        const rate = (metrics.successfulRequests / metrics.totalRequests * 100).toFixed(1);
+        document.getElementById('successRate').textContent = `${rate}%`;
+      }
+      
+      // Update chart
+      updateChart();
+    }
+
+    function initChart() {
+      const canvas = document.getElementById('performanceChart');
+      const ctx = canvas.getContext('2d');
+      
+      // Simple line chart
+      performanceChart = {
+        canvas,
+        ctx,
+        data: []
+      };
+    }
+
+    function updateChart() {
+      if (metrics.responseTimes.length === 0) return;
+      
+      const ctx = performanceChart.ctx;
+      const canvas = performanceChart.canvas;
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      // Keep last 20 data points
+      const data = metrics.responseTimes.slice(-20);
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, width, height);
+      
+      // Find max value for scaling
+      const maxValue = Math.max(...data, 1000);
+      
+      // Draw grid lines
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = (height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      
+      // Draw line chart
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      
+      data.forEach((value, index) => {
+        const x = (width / (data.length - 1)) * index;
+        const y = height - (value / maxValue * height);
+        
+        if (index === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      });
+      
+      ctx.stroke();
+      
+      // Draw points
+      ctx.fillStyle = '#3b82f6';
+      data.forEach((value, index) => {
+        const x = (width / (data.length - 1)) * index;
+        const y = height - (value / maxValue * height);
+        
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    function addLog(message, type = 'info') {
+      const logContainer = document.getElementById('logContainer');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      
+      logContainer.insertBefore(entry, logContainer.firstChild);
+      
+      // Keep only last 50 entries
+      while (logContainer.children.length > 50) {
+        logContainer.removeChild(logContainer.lastChild);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+
+> signal-noise-server@1.0.0 start
+> node index.js
+
+Signal/Noise server running on port 3001
+Ollama connected. Available models: [ 'llama3.2:1b' ]
