@@ -114,7 +114,7 @@ if (results.indicators > 0 || results.badges > 0 || results.dashboard) {
   console.log('1. Open chrome://extensions/');
   console.log('2. Enable Developer Mode (top right)');
   console.log('3. Click "Load unpacked"');
-  console.log('4. Select folder: /Users/pky/Code/signal_noise_ratio');
+  console.log('4. Select the signal_noise_ratio folder');
   console.log('5. Return here and refresh (F5)');
 }
 
