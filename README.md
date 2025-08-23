@@ -1,87 +1,51 @@
 # Signal/Noise Ratio for X (Twitter)
 
-A Chrome extension that intelligently filters your X.com feed by analyzing tweet quality in real-time. Using a sophisticated weighted scoring algorithm and optional AI analysis, it helps you focus on high-quality content while reducing exposure to low-value noise.
+A privacy-first Chrome extension that analyzes your X.com feed quality using **100% local AI**. Powered by Ollama running on your machine, it intelligently classifies tweets as high-quality "Signal" or low-value "Noise" without any data leaving your computer.
 
-## 🎯 Key Features
+## 🎯 Core Features
 
-### Visual Tweet Classification
-- **🟢 Green badges** - High-quality "Signal" content (informative, educational, substantive)
-- **🔴 Red badges** - Low-quality "Noise" content (spam, clickbait, rage bait)
+### Local AI-Powered Analysis
+- **100% Private**: All analysis happens on your machine using Ollama
+- **No Cloud Services**: Zero external API calls, complete data privacy
+- **Smart Classification**: AI understands context, nuance, and quality
+- **Multiple Models**: Supports Qwen (3B/7B) and Llama (1B/3B) models
+
+### Visual Feed Enhancement
+- **🟢 Green badges** - High-quality "Signal" content (score 80-100)
+- **🟡 Yellow badges** - Medium quality content (score 40-79)  
+- **🔴 Red badges** - Low-quality "Noise" content (score 0-39)
 - **Colored borders** - Quick visual scanning with left border indicators
-- **Score percentages** - See exact quality scores (0-100%)
+- **Score percentages** - Exact quality scores on each tweet
 
 ### Real-time Dashboard
-A floating dashboard in the bottom-right corner shows:
+Floating dashboard (bottom-right) shows:
 - Live signal/noise ratio percentage
-- Animated waveform visualization of feed quality
+- ECG-style waveform visualization 
 - Total tweets analyzed counter
-- Quick refresh button for re-analysis
+- Connection status indicator
+- Quick refresh button
 
-### Three Analysis Modes
-
-#### 1. **Heuristic Mode** (Default - Instant & Free)
-Uses a weighted scoring algorithm analyzing:
-- Text quality and length
-- Engagement metrics ratios
-- Media presence
-- Thread indicators
-- Caps lock usage
-- Emoji density
-- Clickbait patterns
-
-#### 2. **Local LLM Mode** (Private & Free)
-Powered by Ollama running on your machine:
-- 100% private - data never leaves your computer
-- Intelligent context-aware analysis
-- ~500ms response time after warmup
-- Supports multiple models (Llama, Qwen, etc.)
-
-#### 3. **Cloud AI Mode** (Most Accurate)
-Optional integration with Claude or OpenAI:
-- Most sophisticated analysis
-- Requires API key
-- ~$0.01 per 1000 tweets
+### Advanced Features
+- **Training Mode**: Collect and export training data to improve the model
+- **Debug Panel**: Press Ctrl+Shift+D for detailed analysis logs
+- **Settings Export/Import**: Backup and share your configurations
+- **Performance Queue**: Optimized batch processing for smooth scrolling
 
 ## 📦 Installation
 
-### Step 1: Install the Extension
+### Prerequisites
+
+You need Ollama installed and running with at least one model:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/signal_noise_ratio.git
-cd signal_noise_ratio
-
-# Or download the ZIP from GitHub
-```
-
-### Step 2: Load in Chrome
-
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** (toggle in top right)
-3. Click **Load unpacked**
-4. Select the `signal_noise_ratio` folder
-5. Pin the extension icon to your toolbar
-
-### Step 3: Test on X.com
-
-1. Navigate to [x.com](https://x.com) or [twitter.com](https://twitter.com)
-2. You should immediately see badges appearing on tweets
-3. Look for the dashboard in the bottom-right corner
-
-## 🤖 Local LLM Setup (Recommended)
-
-For the best balance of privacy, speed, and intelligence:
-
-### Install Ollama
-
-```bash
+# Install Ollama
 # macOS
 brew install ollama
-ollama serve  # Start Ollama service
+ollama serve
 
-# Linux
+# Linux  
 curl -fsSL https://ollama.com/install.sh | sh
-systemctl start ollama  # Start as service
+ollama serve
 
 # Windows
 # Download from https://ollama.com
@@ -90,284 +54,267 @@ systemctl start ollama  # Start as service
 ### Download a Model
 
 ```bash
-# Fastest option (1.3GB)
-ollama pull llama3.2:1b
+# Recommended - Fast and capable (5GB)
+ollama pull qwen3:latest
 
-# Balanced option (2GB)
-ollama pull llama3.2:3b
-
-# Most capable (5GB)
-ollama pull qwen2.5:7b
+# Alternative options:
+ollama pull qwen2.5:7b   # Most capable (4.7GB)
+ollama pull llama3.2:3b  # Balanced (2GB)
+ollama pull llama3.2:1b  # Fastest (1.3GB)
 ```
 
-### Start the Extension Server
+### Install the Extension
 
-```bash
-cd signal_noise_ratio/server
-npm install  # First time only
-npm start    # Starts on port 3001
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/signal_noise_ratio.git
+   cd signal_noise_ratio
+   ```
+
+2. **Start the local server**
+   ```bash
+   cd server
+   npm install  # First time only
+   npm start    # Runs on port 3001
+   ```
+
+3. **Load in Chrome**
+   - Open `chrome://extensions/`
+   - Enable **Developer mode** (top right)
+   - Click **Load unpacked**
+   - Select the `signal_noise_ratio` folder
+
+4. **Navigate to X.com**
+   - Go to [x.com](https://x.com) or [twitter.com](https://twitter.com)
+   - Badges should appear on tweets immediately
+   - Look for the dashboard in bottom-right corner
+
+## 🤖 How It Works
+
+### Architecture
+
+```
+X.com Page
+    ↓
+Chrome Extension (Content Script)
+    ↓
+Local Server (Port 3001)
+    ↓
+Ollama API (Port 11434)
+    ↓
+Local LLM (Qwen/Llama)
 ```
 
-The server will automatically:
-- Connect to Ollama
-- Handle retries with exponential backoff
-- Fall back to heuristics if Ollama is unavailable
-- Show connection status in logs
+### Analysis Pipeline
 
-### Enable in Extension
+1. **Tweet Detection**: MutationObserver watches for new tweets in the DOM
+2. **Pre-filtering**: Extremely obvious spam/quality (95%+ confidence) caught early
+3. **LLM Analysis**: Tweet text sent to local Ollama instance
+4. **Scoring**: Model returns 0-100 score with reasoning
+5. **Visual Update**: Badges and borders applied based on score
+6. **Dashboard Update**: Statistics aggregated and displayed
 
-1. Click the extension icon in Chrome toolbar
-2. Click **Settings**
-3. Select **Local LLM (Ollama)**
-4. The badge icon will show connection status
+### Scoring Categories
 
-## 🎮 Usage Guide
+- **High Signal (80-100)**: 🟢 Green - Breaking news, research, educational content
+- **Signal (threshold-79)**: 🟢 Green - Quality content above your threshold
+- **Medium (40-threshold)**: 🟡 Yellow - Mixed quality, personal opinions
+- **Noise (0-39)**: 🔴 Red - Spam, clickbait, low-effort content
+
+## 🎮 Usage
 
 ### Basic Operation
 
-The extension works automatically once installed:
-- Analyzes tweets as they load
-- Updates in real-time as you scroll
-- Re-analyzes when settings change
+Once installed, the extension works automatically:
+- Analyzes tweets as they appear
+- Updates in real-time while scrolling
+- Maintains connection to local LLM
+- Shows connection status in extension badge
 
 ### Keyboard Shortcuts
 
-- **Ctrl+Shift+D** - Toggle debug mode (see detailed logs)
-- **Ctrl+Shift+R** - Force re-analyze all visible tweets
+- **Ctrl+Shift+D** - Toggle debug panel
+- **Ctrl+Shift+R** - Force re-analyze visible tweets
+- **Ctrl+Shift+T** - Toggle training mode
 
-### Settings & Customization
+### Settings
 
-Access via extension popup → Settings:
+Access via extension icon → Settings:
 
-#### Display Options
-- **Show Indicators** - Toggle badge visibility
-- **Auto-hide Noise** - Blur/collapse low-quality tweets
-- **Show Dashboard** - Toggle floating statistics panel
-- **Debug Mode** - Show detailed analysis logs
+- **Score Threshold**: Adjust signal/noise cutoff (default: 30)
+- **Batch Size**: Tweets to analyze at once (default: 5)
+- **Show Indicators**: Toggle visual badges
+- **Auto-hide Noise**: Blur low-quality tweets
+- **Debug Mode**: Show detailed logs
+- **Training Mode**: Collect data for model improvement
 
-#### Analysis Settings
-- **Threshold** - Adjust signal/noise cutoff (default: 30%)
-  - Lower = more permissive
-  - Higher = stricter filtering
-- **Analysis Mode** - Choose between Heuristic/Local/Cloud
-- **Batch Size** - Tweets to analyze at once (affects performance)
+## 🏗️ Project Structure
 
-#### Personalization
-- **Interests** - Add keywords to boost relevant content
-- **Signal Patterns** - Custom patterns for high-quality content
-- **Noise Patterns** - Custom patterns for low-quality content
-
-## 🏗️ Architecture
-
-### Extension Structure
 ```
 signal_noise_ratio/
-├── manifest.json           # Chrome extension configuration
-├── content/               # Core functionality (injected into X.com)
-│   ├── content.js        # Main orchestrator
-│   ├── analyzer.js       # TweetAnalyzer class with scoring logic
-│   ├── llm-service.js    # Local LLM communication
-│   ├── styles.css        # Visual indicators styling
-│   └── waveform.js       # Dashboard visualization
-├── background/            # Service worker
-│   └── background.js     # API handling, settings management
-├── popup/                 # Extension popup UI
-│   ├── popup.html
-│   ├── popup.js
-│   └── popup.css
-├── options/              # Full settings page
-│   ├── options.html
-│   ├── options.js
-│   └── options.css
-├── server/               # Local LLM server
-│   ├── index.js         # Express server with WebSocket
+├── manifest.json          # Chrome extension config
+├── content/              # Core extension scripts
+│   ├── content.js       # Main orchestrator
+│   ├── analyzer.js      # Tweet analysis logic
+│   ├── llm-service.js   # Ollama connection
+│   ├── styles.css       # Visual indicators
+│   └── waveform.js      # Dashboard visualization
+├── background/           # Service worker
+│   └── background.js    # Settings & messaging
+├── server/              # Local Node.js server
+│   ├── index.js        # Express + WebSocket server
 │   ├── ollama-client.js # Ollama API integration
-│   └── logger.js        # Structured logging
-└── tests/               # Testing utilities
-    ├── test-extension.js
-    └── diagnostic.js
-```
-
-### Data Flow
-
-1. **Tweet Detection**: MutationObserver watches for new tweets
-2. **Analysis Pipeline**:
-   - Extract tweet metadata (text, author, metrics)
-   - Apply weighted scoring algorithm
-   - Optional AI enhancement via local/cloud
-3. **Visual Update**: Inject badges and apply styling
-4. **Statistics**: Aggregate and store in Chrome storage
-5. **Dashboard Update**: Real-time chart and metrics
-
-### Weighted Scoring Algorithm
-
-The heuristic analyzer uses multiple weighted factors:
-
-```javascript
-Base Score = 50 (neutral)
-
-Positive Factors (+):
-- Has links: +20 points
-- Is thread: +15 points  
-- From verified: +10 points
-- Has media: +10 points
-- Good engagement ratio: +15 points
-- Long text (>280 chars): +10 points
-
-Negative Factors (-):
-- High caps ratio: -20 points
-- Excessive emojis: -15 points
-- Clickbait keywords: -25 points
-- Very short text: -15 points
-- Poor engagement: -10 points
-
-Final Score = Clamp(0, 100)
+│   └── logger.js       # Structured logging
+├── popup/               # Extension popup
+├── options/             # Settings page
+└── tests/              # Test scripts
 ```
 
 ## 🧪 Testing
 
-### Quick Test in Console
+### Quick Health Check
+
+```bash
+# Check Ollama
+ollama list  # Should show your models
+
+# Check server
+curl http://localhost:3001/health | jq '.'
+# Should show: {"status":"ok","ollama":{"connected":true,...}}
+```
+
+### Test in Browser
 
 ```javascript
-// Paste in Chrome DevTools Console on X.com
-// Check if extension is active
+// Paste in DevTools Console on X.com
 console.log('Badges:', document.querySelectorAll('.sn-badge').length);
 console.log('Dashboard:', !!document.querySelector('.sn-dashboard'));
-
-// Force re-analysis
-window.postMessage({ type: 'SNR_ANALYZE_VISIBLE' }, '*');
 ```
 
 ### Run Test Suite
 
 ```bash
-# Test server endpoints
 cd server
 node test-tweet-analysis.js
-
-# Test extension in browser
-# 1. Open X.com
-# 2. Open DevTools Console
-# 3. Paste contents of tests/test-extension.js
-```
-
-### Monitor Performance
-
-```bash
-# Server monitoring
-curl http://localhost:3001/health | jq '.'
-
-# Watch server logs
-tail -f server/server.log
 ```
 
 ## 🔧 Troubleshooting
 
-### Extension Not Working?
+### No Badges Appearing?
 
-1. **Check Installation**
-   - Verify extension is enabled in chrome://extensions/
-   - Try reloading the extension
-   - Refresh X.com page
-
-2. **Check Console**
-   - Open DevTools (F12)
-   - Look for errors in Console tab
-   - Enable debug mode (Ctrl+Shift+D)
-
-3. **Run Diagnostic**
-   ```javascript
-   // Paste in console
-   copy(await fetch(chrome.runtime.getURL('tests/diagnostic.js')).then(r => r.text()))
-   ```
-
-### Local LLM Issues?
-
-1. **Check Ollama**
+1. **Check Ollama is running**
    ```bash
-   ollama list  # Should show your models
-   curl http://localhost:11434/api/tags  # Should return JSON
+   ollama list  # Should list models
    ```
 
-2. **Check Server**
+2. **Check server is running**
    ```bash
    curl http://localhost:3001/health
-   # Should show: {"status":"ok","ollama":{"connected":true}}
    ```
 
-3. **Check Logs**
-   ```bash
-   tail -f server/server.log
-   # Look for connection errors
-   ```
+3. **Check extension badge**
+   - Green "ON" = Connected
+   - Red "OFF" = Disconnected
 
-### Performance Issues?
+4. **Enable debug mode**
+   - Press Ctrl+Shift+D on X.com
+   - Check console for errors
 
+### Slow Analysis?
+
+- Try a smaller model (llama3.2:1b)
 - Reduce batch size in settings
-- Switch to heuristic mode
-- Disable debug mode
-- Clear Chrome storage if over 5MB
+- Check CPU usage - Ollama needs resources
+
+### Connection Issues?
+
+The server automatically retries connection with exponential backoff. Check:
+```bash
+tail -f server/server.log | jq '.'
+```
 
 ## 🔐 Privacy & Security
 
-- **No tracking**: Zero analytics or telemetry
-- **Local storage only**: All data stays in Chrome
-- **No external requests**: Unless you enable cloud AI
-- **Open source**: Fully auditable code
-- **Secure API handling**: Keys never logged or transmitted
+- **100% Local**: No data ever leaves your machine
+- **No Tracking**: Zero analytics or telemetry
+- **No Cloud APIs**: Completely offline capable
+- **Open Source**: Fully auditable code
+- **Secure Storage**: Settings in Chrome's encrypted storage
 
-## 🚀 Advanced Features
+## 🚀 Performance Tips
 
-### WebSocket Real-time Updates
-The server supports WebSocket connections for live analysis:
+### Model Selection
+
+| Model | Size | Speed | Quality | RAM Needed |
+|-------|------|-------|---------|------------|
+| llama3.2:1b | 1.3GB | Fastest | Good | 2GB |
+| llama3.2:3b | 2GB | Fast | Better | 4GB |
+| qwen3:latest | 5GB | Medium | Best | 8GB |
+| qwen2.5:7b | 4.7GB | Slower | Excellent | 8GB |
+
+### Optimization
+
+- **Pre-warming**: First analysis is slower, then speeds up
+- **Caching**: Recent analyses are cached for 1 hour
+- **Queueing**: Tweets analyzed in optimized batches
+- **Memory**: Keep Chrome memory under control with periodic refreshes
+
+## 📝 Advanced Configuration
+
+### Custom Prompts
+
+Edit `server/ollama-client.js` to customize the analysis prompt:
 ```javascript
-const ws = new WebSocket('ws://localhost:3001');
-ws.send(JSON.stringify({ type: 'analyze', data: tweetData }));
+const customPrompt = `Your criteria here...`;
 ```
 
-### Batch Analysis
-Analyze multiple tweets efficiently:
-```bash
-curl -X POST http://localhost:3001/analyze-batch \
-  -H "Content-Type: application/json" \
-  -d '{"tweets": [...]}'
+### Different Models
+
+Set default model in `server/ollama-client.js`:
+```javascript
+this.defaultModel = 'qwen3:latest'; // or any model you have
 ```
 
-### Custom Models
-Configure different Ollama models in server/.env:
+### Server Configuration
+
+Create `server/.env`:
 ```env
-OLLAMA_MODEL=llama3.2:3b
+PORT=3001
 OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen3:latest
 ```
 
-## 📝 Contributing
+## 🤝 Contributing
 
-We welcome contributions! Please:
+Contributions welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Follow the existing code style
-4. Add tests for new features
-5. Submit a pull request
+3. Test with local Ollama
+4. Submit a pull request
 
-### Development Tips
+### Development
 
-- Use `npm run dev` for auto-restart server
-- Enable debug mode for detailed logs
-- Test on both x.com and twitter.com
-- Check memory usage in Chrome Task Manager
+```bash
+# Watch mode for server
+cd server
+npm run dev
+
+# Enable debug logging
+localStorage.setItem('snr_debug', 'true')
+```
 
 ## 📄 License
 
-MIT License - see LICENSE file for details
+MIT License - see LICENSE file
 
 ## 🙏 Acknowledgments
 
+- Powered by [Ollama](https://ollama.com) for local AI
 - Built with Chrome Extension Manifest V3
-- Powered by Ollama for local AI
-- Inspired by the need for healthier social media consumption
-- Thanks to all contributors and testers
+- Inspired by the need for mindful social media consumption
+- Thanks to the open-source AI community
 
 ---
 
-**Remember**: This tool helps you be mindful of content quality. The goal isn't to eliminate all "noise" but to be aware of what you're consuming and make intentional choices about your attention.
+**Note**: This extension requires a local Ollama installation to function. Without Ollama running, tweets will not be analyzed. This is by design - your data never leaves your machine.

@@ -1,423 +1,369 @@
-# CLAUDE.md - Development Guide
+# CLAUDE.md - Developer Guide
 
-This file provides comprehensive guidance for Claude Code (claude.ai/code) and developers working with the Signal/Noise Ratio Chrome extension.
+This file provides comprehensive guidance for Claude Code (claude.ai/code) and developers working with the Signal/Noise Ratio Chrome extension - a **100% local, privacy-first** tweet analysis system.
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Load extension in Chrome
-chrome://extensions/ → Developer mode → Load unpacked → Select this folder
+# 1. Install and start Ollama
+ollama serve
+ollama pull qwen3:latest  # or llama3.2:3b
 
-# 2. Start local server (for AI analysis)
+# 2. Start local server
 cd server && npm install && npm start
 
-# 3. Test on X.com
-Navigate to x.com → Look for green/red badges on tweets
+# 3. Load extension in Chrome
+chrome://extensions/ → Developer mode → Load unpacked → Select this folder
 
-# 4. Run tests
-node server/test-tweet-analysis.js
+# 4. Test on X.com
+Navigate to x.com → Look for green/red badges on tweets
 ```
 
-## 🏗️ Project Architecture
+## 🏗️ Architecture Overview
 
-### Core Components
+### System Design
 
-#### 1. **Content Scripts** (Injected into X.com)
-- **content.js**: Main orchestrator
-  - MutationObserver for new tweets
-  - Coordinates analysis pipeline
-  - Manages UI updates
-  - Handles settings sync
+This is a **local-only** Chrome extension that requires Ollama to function:
 
-- **analyzer.js**: TweetAnalyzer class
-  - Weighted scoring algorithm
-  - Tweet metadata extraction
-  - Heuristic analysis logic
-  - Score calculation (0-100)
+```
+X.com (DOM)
+    ↓
+Content Scripts (Injected)
+    ↓
+Local Express Server (Port 3001)
+    ↓
+Ollama API (Port 11434)
+    ↓
+Local LLM (Qwen/Llama)
+```
 
-- **llm-service.js**: Local LLM integration
-  - WebSocket connection to server
-  - Retry logic with exponential backoff
-  - Fallback to heuristics
-  - Connection health monitoring
+**Key Point**: Without Ollama running, the extension does NOT analyze tweets. There are no fallback methods.
 
-#### 2. **Background Service Worker**
-- **background.js**: API and settings manager
-  - Chrome storage management
-  - Cloud AI API calls (Claude/OpenAI)
-  - Message routing between components
-  - Badge icon updates
+## 📁 Core Components
 
-#### 3. **Local Server** (Node.js/Express)
-- **index.js**: Express server
-  - REST endpoints for analysis
-  - WebSocket for real-time updates
-  - CORS handling for extension
-  - Request batching
+### 1. Content Scripts (Injected into X.com)
 
-- **ollama-client.js**: Ollama integration
-  - Model management
-  - Prompt engineering
-  - Response parsing
-  - Connection pooling
+#### `content.js` - Main Orchestrator
+- MutationObserver for new tweet detection
+- Manages analysis queue and batching
+- Coordinates UI updates (badges, borders, dashboard)
+- Handles settings synchronization
+- Manages WebSocket connection status
 
-## 📊 Weighted Scoring Algorithm
+#### `analyzer.js` - Tweet Analysis Engine
+```javascript
+// Actual implementation flow:
+async analyzeTweet(tweetElement, options) {
+  // 1. Extract tweet data
+  const tweetData = this.extractTweetData(tweetElement);
+  
+  // 2. Quick pre-filter (95%+ confidence only)
+  const quickResult = this.quickHeuristicFilter(tweetData);
+  if (quickResult?.confidence >= 0.95) return quickResult;
+  
+  // 3. LLM analysis (REQUIRED - no fallback)
+  if (!this.llmService) return null; // No analysis without LLM
+  
+  const result = await this.llmService.analyzeTweet(tweetData);
+  return result || null; // null = no badge shown
+}
+```
 
-The heuristic analyzer uses a sophisticated weighted scoring system:
+#### `llm-service.js` - Ollama Connection Manager
+- WebSocket connection to local server
+- Automatic reconnection with exponential backoff
+- Queue management for batch processing
+- Connection health monitoring
+- **NO fallback mechanism** - returns null if disconnected
+
+### 2. Local Server (`server/`)
+
+#### `index.js` - Express + WebSocket Server
+- CORS configured for extension only
+- REST endpoints: `/health`, `/analyze`, `/analyze-batch`
+- WebSocket for real-time analysis
+- No external API calls
+
+#### `ollama-client.js` - Ollama Integration
+```javascript
+// Current configuration:
+this.defaultModel = 'llama3.2:3b'; // Can be changed
+// Available: qwen3:latest, qwen2.5:7b, llama3.2:3b, llama3.2:1b
+
+// Analysis method (single-agent only):
+async analyzeContent(text, userPreferences) {
+  const prompt = this.buildContentPrompt(text);
+  const response = await this.generateCompletion(prompt);
+  return this.parseResponse(response);
+}
+```
+
+**Note**: Multi-agent analysis code exists but is **commented out** (lines 72-114).
+
+### 3. Background Service Worker
+
+#### `background.js` - Settings & Messaging
+- Chrome storage management
+- Message routing between components
+- Badge status updates (ON/OFF)
+- **No cloud API handling** (despite legacy references)
+
+## 🔍 Critical Implementation Details
+
+### Analysis Flow (What Actually Happens)
+
+1. **Tweet Appears** → MutationObserver detects
+2. **Check LLM Connection** → If disconnected, skip analysis
+3. **Queue Tweet** → Add to batch for efficiency
+4. **Send to Server** → POST to localhost:3001
+5. **Ollama Processing** → Server calls Ollama API
+6. **Parse Response** → Extract score (0-100) and reasoning
+7. **Apply UI** → Add badge, border, update dashboard
+8. **Cache Result** → 1-hour cache to avoid re-analysis
+
+### Scoring System
 
 ```javascript
-// Base score starts at 50 (neutral)
-let score = 50;
-
-// Positive signals (increase score)
-if (hasExternalLinks) score += 20;  // Informative content
-if (isThread) score += 15;          // In-depth discussion
-if (isVerified) score += 10;        // Credibility
-if (hasMedia) score += 10;          // Rich content
-if (textLength > 280) score += 10;  // Detailed post
-if (engagementRatio > 0.1) score += 15; // Quality engagement
-
-// Negative signals (decrease score)
-if (capsRatio > 0.3) score -= 20;   // SHOUTING
-if (emojiCount > 5) score -= 15;    // Spam indicator
-if (hasClickbait) score -= 25;      // "You won't BELIEVE..."
-if (textLength < 50) score -= 15;   // Low effort
-if (isReplyChain) score -= 10;      // Noise thread
-
-// Clamp between 0-100
-score = Math.max(0, Math.min(100, score));
+// Categories based on score:
+score >= 80: "high-signal" (Green)
+score >= threshold: "signal" (Green)  
+score >= 40: "medium" (Yellow)
+score < 40: "noise" (Red)
 ```
+
+### Quick Pre-Filter (Minimal Heuristics)
+
+Only catches extremely obvious cases (95%+ confidence):
+- Known tech leaders (PG, Sama, etc.)
+- Extreme spam patterns (all caps + emojis)
+- Empty or single-word tweets
+
+This is NOT a fallback - just optimization to skip LLM for obvious cases.
+
+## ⚠️ Important Limitations
+
+### No Fallback Analysis
+- If Ollama is disconnected, tweets are NOT analyzed
+- No heuristic-only mode despite UI references
+- No cloud API support despite code references
+
+### Dependency on Ollama
+- Extension is 100% dependent on local Ollama
+- Must have at least one model pulled
+- Requires ~2-8GB RAM depending on model
+
+### Performance Considerations
+- First analysis after startup is slow (model loading)
+- Batch processing may cause slight delays
+- Large models (7B) significantly slower than small (1B)
 
 ## 🛠️ Development Workflow
 
-### Loading & Testing
+### Setup Development Environment
 
-1. **Initial Setup**
-   ```bash
-   # Clone and prepare
-   git clone <repo>
-   cd signal_noise_ratio
-   
-   # Install server dependencies
-   cd server && npm install
-   ```
+```bash
+# 1. Clone repo
+git clone <repo>
+cd signal_noise_ratio
 
-2. **Chrome Extension**
-   - Navigate to `chrome://extensions/`
-   - Enable "Developer mode"
-   - Click "Load unpacked"
-   - Select project root directory
+# 2. Install Ollama models
+ollama pull qwen3:latest
+ollama pull llama3.2:3b
 
-3. **Reload After Changes**
-   - Content scripts: Refresh X.com page
-   - Background script: Click reload in chrome://extensions/
-   - Server changes: Restart with `npm start`
+# 3. Start server in dev mode
+cd server
+npm install
+npm run dev  # Auto-restarts on changes
+
+# 4. Load extension (unpacked)
+# Chrome → chrome://extensions/ → Load unpacked
+```
 
 ### Debugging
 
-#### Content Scripts
+#### Enable Debug Mode
 ```javascript
-// Enable debug mode (Ctrl+Shift+D on X.com)
-localStorage.setItem('snr_debug', 'true');
+// Method 1: Keyboard shortcut on X.com
+Ctrl+Shift+D
 
-// Or programmatically
+// Method 2: Set in storage
 chrome.storage.local.set({ debugMode: true });
+
+// Method 3: Local storage
+localStorage.setItem('snr_debug', 'true');
 ```
 
-#### Background Script
-- chrome://extensions/ → Details → Service Worker → Inspect
-
-#### Server Logs
+#### View Logs
 ```bash
-# Structured JSON logs
+# Server logs (structured JSON)
 tail -f server/server.log | jq '.'
+
+# Filter for errors
+tail -f server/server.log | jq 'select(.level == "error")'
 
 # Connection status
 curl http://localhost:3001/health | jq '.'
 ```
 
-## 🧪 Testing
+#### Chrome DevTools
+- Content scripts: Inspect on X.com page
+- Service worker: chrome://extensions/ → Service Worker → Inspect
+- Check badge text for connection status
 
-### Unit Tests
+## 📊 Testing
+
+### Integration Test
 ```bash
-# Test server API
+# Start everything
+ollama serve
+cd server && npm start
+
+# In another terminal
 cd server
 node test-tweet-analysis.js
-
-# Test Ollama integration
-node test-ollama.js
 ```
 
-### Integration Tests
-```javascript
-// In Chrome Console on X.com
-// Load and run test suite
-const script = await fetch(chrome.runtime.getURL('tests/test-extension.js'));
-eval(await script.text());
-```
-
-### Performance Testing
-```bash
-# Benchmark different models
-cd server
-node benchmark.js
-
-# Monitor memory
-# Chrome Task Manager (Shift+Esc)
-# Look for "Signal/Noise Ratio" entry
-```
-
-## 📝 Key Implementation Details
-
-### Message Passing
-```javascript
-// Content → Background
-const response = await chrome.runtime.sendMessage({
-  action: 'analyzeWithAI',
-  data: { text, author, metrics }
-});
-
-// Background → Content (broadcast)
-chrome.tabs.query({ url: ['*://x.com/*', '*://twitter.com/*'] }, (tabs) => {
-  tabs.forEach(tab => {
-    chrome.tabs.sendMessage(tab.id, { action: 'settingsUpdated' });
-  });
-});
-```
-
-### Chrome Storage Pattern
-```javascript
-// Settings with defaults
-const getSettings = async () => {
-  const defaults = {
-    threshold: 30,
-    useLocalLLM: false,
-    debugMode: false
-  };
-  const stored = await chrome.storage.local.get(Object.keys(defaults));
-  return { ...defaults, ...stored };
-};
-
-// Atomic updates
-await chrome.storage.local.set({ 
-  [`stat_${Date.now()}`]: value 
-});
-```
-
-### DOM Observation
-```javascript
-// Efficient tweet detection
-const observer = new MutationObserver((mutations) => {
-  const tweets = new Set();
-  mutations.forEach(mutation => {
-    mutation.addedNodes.forEach(node => {
-      if (node.nodeType === 1) {
-        const tweet = node.querySelector?.('[data-testid="tweet"]');
-        if (tweet) tweets.add(tweet);
-      }
-    });
-  });
-  if (tweets.size > 0) analyzeTweets([...tweets]);
-});
-
-observer.observe(document.body, {
-  childList: true,
-  subtree: true
-});
-```
-
-### WebSocket Handling
-```javascript
-// Auto-reconnect pattern
-class LLMService {
-  connect() {
-    this.ws = new WebSocket('ws://localhost:3001');
-    
-    this.ws.onclose = () => {
-      this.retryCount++;
-      const delay = Math.min(1000 * Math.pow(2, this.retryCount), 30000);
-      setTimeout(() => this.connect(), delay);
-    };
-    
-    this.ws.onopen = () => {
-      this.retryCount = 0;
-      this.processQueue();
-    };
-  }
-}
-```
+### Manual Testing Checklist
+- [ ] Ollama running (`ollama list`)
+- [ ] Server running (`curl localhost:3001/health`)
+- [ ] Extension loaded (chrome://extensions/)
+- [ ] Navigate to X.com
+- [ ] Badge shows "ON" (connected)
+- [ ] Tweets get badges within 2-3 seconds
+- [ ] Dashboard appears (bottom-right)
+- [ ] Debug panel works (Ctrl+Shift+D)
 
 ## 🐛 Common Issues & Solutions
 
-### Extension Not Loading
+### No Badges Appearing
+
 ```bash
-# Check manifest syntax
-python -m json.tool manifest.json
+# 1. Check Ollama
+ollama list  # Should show models
+curl http://localhost:11434/api/tags  # Should return JSON
 
-# Check permissions
-# Ensure host_permissions includes x.com and twitter.com
-```
-
-### Badges Not Appearing
-```javascript
-// Check selectors are current
-document.querySelector('[data-testid="tweet"]'); // Should find tweets
-
-// Verify injection
-console.log(window.TweetAnalyzer); // Should be defined
-```
-
-### Server Connection Failed
-```bash
-# Check Ollama is running
-curl http://localhost:11434/api/tags
-
-# Check server is running
+# 2. Check server
 lsof -i :3001  # Should show node process
+curl http://localhost:3001/health
 
-# Check CORS headers
-curl -I http://localhost:3001/health
+# 3. Check extension
+# Badge should show "ON" not "OFF"
+# Open DevTools on X.com, check for errors
 ```
 
-### Memory Leaks
-```javascript
-// Use WeakMap for DOM references
-const analyzedTweets = new WeakMap();
-
-// Clean up observers
-observer.disconnect();
-
-// Clear old storage data
-const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
-const storage = await chrome.storage.local.get();
-const toRemove = Object.keys(storage)
-  .filter(key => key.startsWith('stat_') && parseInt(key.split('_')[1]) < oneWeekAgo);
-await chrome.storage.local.remove(toRemove);
-```
-
-## 🔍 Code Quality Checklist
-
-Before committing:
-
-- [ ] Run test suite: `node server/test-tweet-analysis.js`
-- [ ] Check extension loads without errors
-- [ ] Verify badges appear on tweets
-- [ ] Test with Ollama connected and disconnected
-- [ ] Monitor memory usage (should stay under 50MB)
-- [ ] Check for console errors on X.com
-- [ ] Test settings persistence
-- [ ] Verify real-time updates work
-- [ ] Test on both x.com and twitter.com
-
-## 📚 API Reference
-
-### Server Endpoints
-
-```bash
-# Health check
-GET /health
-Response: { status: "ok", ollama: { connected: boolean, models: [] } }
-
-# Single tweet analysis
-POST /analyze
-Body: { text: string, author: string, metrics: object }
-Response: { score: number, isSignal: boolean, confidence: number }
-
-# Batch analysis
-POST /analyze-batch
-Body: { tweets: array }
-Response: { results: array }
-```
-
-### Chrome Runtime API Usage
+### Slow Analysis
 
 ```javascript
-// Get extension URL
-chrome.runtime.getURL('path/to/file');
-
-// Get manifest
-chrome.runtime.getManifest();
-
-// Message passing
-chrome.runtime.sendMessage();
-chrome.runtime.onMessage.addListener();
-
-// Storage
-chrome.storage.local.get/set/remove/clear();
-chrome.storage.onChanged.addListener();
+// Change model in server/ollama-client.js
+this.defaultModel = 'llama3.2:1b'; // Fastest option
 ```
 
-## 🚀 Performance Optimization
+### Memory Issues
 
-### Batch Processing
 ```javascript
-// Process tweets in batches
-const batchSize = 10;
-const batches = [];
-for (let i = 0; i < tweets.length; i += batchSize) {
-  batches.push(tweets.slice(i, i + batchSize));
-}
-
-for (const batch of batches) {
-  await Promise.all(batch.map(tweet => analyze(tweet)));
-  await new Promise(r => setTimeout(r, 100)); // Prevent blocking
+// Clear cache periodically
+const cache = new Map();
+// Limit cache size in analyzer.js
+if (cache.size > 100) {
+  cache.clear();
 }
 ```
 
-### Debouncing
+## 📝 Configuration
+
+### Available Models (Tested)
+
+| Model | Speed | Quality | Use Case |
+|-------|-------|---------|----------|
+| llama3.2:1b | Fastest | Good | Quick browsing |
+| llama3.2:3b | Fast | Better | Default choice |
+| qwen3:latest | Medium | Best | Quality focus |
+| qwen2.5:7b | Slow | Excellent | Best results |
+
+### Server Configuration
+
+```env
+# server/.env
+PORT=3001
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=qwen3:latest  # Override default
+OLLAMA_DEBUG=true  # Verbose logging
+```
+
+### Extension Settings
+
+Settings stored in Chrome storage:
+- `threshold`: Signal/noise cutoff (default: 30)
+- `useLocalLLM`: Always true (required)
+- `batchSize`: Tweets per batch (default: 5)
+- `debugMode`: Show detailed logs
+- `showIndicators`: Visual badges on/off
+
+## 🚫 What Doesn't Work
+
+Despite references in code/UI, these features are **NOT functional**:
+
+1. **Cloud APIs** - No Anthropic/OpenAI integration
+2. **Heuristic Mode** - Not a standalone analysis method
+3. **Multi-Agent Analysis** - Code exists but disabled
+4. **Offline Analysis** - Requires Ollama connection
+5. **API Key Settings** - UI exists but non-functional
+
+## 🔮 Future Improvements
+
+To make the extension more robust:
+
+1. **Implement True Heuristics** - Pattern-based fallback
+2. **Enable Multi-Agent** - Uncomment and fix the code
+3. **Add Cloud APIs** - Implement the referenced features
+4. **Offline Cache** - Store recent analyses for offline
+5. **Remove Misleading UI** - Clean up non-functional options
+
+## 📚 Code Patterns
+
+### Message Passing
 ```javascript
-// Debounce scroll events
-let scrollTimer;
-window.addEventListener('scroll', () => {
-  clearTimeout(scrollTimer);
-  scrollTimer = setTimeout(() => {
-    analyzeVisibleTweets();
-  }, 200);
+// Content → Background (not used for API)
+chrome.runtime.sendMessage({ 
+  action: 'updateBadge',
+  status: 'connected' 
 });
 ```
 
-### Caching
+### Storage Pattern
 ```javascript
-// Cache analysis results
-const cache = new Map();
-const getCacheKey = (tweet) => `${tweet.author}_${tweet.text.substring(0, 50)}`;
-
-const analyze = async (tweet) => {
-  const key = getCacheKey(tweet);
-  if (cache.has(key)) return cache.get(key);
-  
-  const result = await performAnalysis(tweet);
-  cache.set(key, result);
-  
-  // Limit cache size
-  if (cache.size > 1000) {
-    const firstKey = cache.keys().next().value;
-    cache.delete(firstKey);
-  }
-  
-  return result;
-};
+// Settings with defaults
+const settings = await chrome.storage.local.get({
+  threshold: 30,
+  useLocalLLM: true,  // Always true
+  debugMode: false
+});
 ```
 
-## 📋 Manifest V3 Constraints
+### Connection Management
+```javascript
+// Auto-reconnect WebSocket
+class LLMService {
+  connect() {
+    this.ws = new WebSocket('ws://localhost:3001');
+    this.ws.onclose = () => {
+      setTimeout(() => this.connect(), 
+        Math.min(1000 * 2 ** this.retryCount, 30000));
+    };
+  }
+}
+```
 
-- **No remote code**: All JavaScript must be bundled
-- **Service workers**: No persistent background pages
-- **Content Security Policy**: Strict by default
-- **Host permissions**: Must be explicitly declared
+## ✅ What Works Well
 
-## 🎯 Future Enhancements
-
-Potential improvements to consider:
-
-1. **User Training**: Allow users to mark tweets as signal/noise to improve personalization
-2. **Export Analytics**: Generate reports on feed quality over time
-3. **Cross-Platform**: Support for other social media platforms
-4. **Mobile Sync**: Sync settings across devices
-5. **Advanced Filtering**: Regex patterns, author lists, topic modeling
-6. **Performance**: Web Workers for heavy computation
-7. **Accessibility**: Screen reader support, keyboard navigation
+- **Privacy**: 100% local, no data leakage
+- **Visual Feedback**: Clear badges and borders
+- **Real-time Updates**: Smooth scrolling analysis
+- **Debug Tools**: Comprehensive logging
+- **Training Mode**: Data collection for improvement
+- **Connection Management**: Robust retry logic
+- **Performance**: Optimized batching and caching
 
 ---
 
-**Note**: This guide is optimized for Claude Code. When making changes, preserve the existing patterns and maintain backward compatibility.
+**Critical Note for Development**: This extension is entirely dependent on local Ollama. Any features suggesting otherwise (heuristics, cloud APIs) are legacy code or planned features that don't actually work. Focus development on improving the local LLM integration rather than implementing the non-functional features referenced in the UI.
