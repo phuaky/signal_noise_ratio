@@ -267,6 +267,12 @@ class ExtensionLogger {
    * Store log entry in Chrome storage
    */
   async storeLog(logEntry, retryCount = 0) {
+    // Check if chrome.storage is available (context might be invalidated)
+    if (!chrome?.storage?.local) {
+      console.warn('Chrome storage not available - extension context may be invalidated');
+      return;
+    }
+    
     try {
       const result = await chrome.storage.local.get('logs');
       const logs = result.logs || [];
@@ -281,6 +287,12 @@ class ExtensionLogger {
       
       await chrome.storage.local.set({ logs });
     } catch (error) {
+      // Check if context was invalidated
+      if (error.message && error.message.includes('Extension context invalidated')) {
+        console.warn('Extension context invalidated - stopping logger');
+        this.enableLogStorage = false;
+        return;
+      }
       console.error('Failed to store log:', error);
       
       // Retry logic for quota exceeded errors
@@ -342,6 +354,13 @@ class ExtensionLogger {
   async _retryFailedLogs() {
     this._retryTimeout = null;
     
+    // Check if chrome.storage is still available
+    if (!chrome?.storage?.local) {
+      console.warn('Chrome storage not available - clearing failed logs');
+      this._failedLogs = [];
+      return;
+    }
+    
     if (!this._failedLogs || this._failedLogs.length === 0) {
       return;
     }
@@ -374,14 +393,16 @@ class ExtensionLogger {
         // Ignore errors if no listener
       });
       
-      // Also send to debug panel if it exists
-      if (window.debugPanel) {
-        window.debugPanel.addLog(logEntry.level, logEntry.message, logEntry.data);
-      }
-      
-      // Support for __snrDebugPanel global reference
-      if (window.__snrDebugPanel) {
-        window.__snrDebugPanel.addLog(logEntry);
+      // Also send to debug panel if it exists (only in content script context)
+      if (typeof window !== 'undefined') {
+        if (window.debugPanel) {
+          window.debugPanel.addLog(logEntry.level, logEntry.message, logEntry.data);
+        }
+        
+        // Support for __snrDebugPanel global reference
+        if (window.__snrDebugPanel) {
+          window.__snrDebugPanel.addLog(logEntry);
+        }
       }
     } catch (e) {
       // Ignore if messaging fails
@@ -585,10 +606,15 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
 }
 
 // Export for use in extension
+// Check environment and export appropriately
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = logger;
-} else {
+} else if (typeof window !== 'undefined') {
+  // Content script context (has window)
   window.ExtensionLogger = logger;
-  // Also expose shorthand global for convenience
   window.extLog = logger;
+} else if (typeof self !== 'undefined') {
+  // Service worker context (no window, use self)
+  self.ExtensionLogger = logger;
+  self.extLog = logger;
 }

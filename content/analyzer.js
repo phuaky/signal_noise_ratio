@@ -15,6 +15,11 @@ class TweetAnalyzer {
     // Initialize LLM service if available
     this.llmService = window.LLMService ? new window.LLMService() : null;
     
+    // Initialize caches
+    this.authorCache = new Map(); // Cache author scores
+    this.patternCache = new Map(); // Cache pattern analysis results
+    this.cacheTimeout = 3600000; // 1 hour cache
+    
     // Default heuristic weights
     this.defaultWeights = {
       hasMedia: 0.15,
@@ -66,54 +71,171 @@ class TweetAnalyzer {
       });
     }
     
-    // If a category is provided, use category-specific weights
-    if (options.category && this.settings.useCategoryWeights) {
-      if (window.SNR_DEBUG) extLog.debug('Loading category weights', { category: options.category });
-      await this.loadCategoryWeights(options.category);
+    // Check author cache first
+    const authorHandle = tweetData.author?.handle;
+    if (authorHandle) {
+      const cachedAuthor = this.getCachedAuthorScore(authorHandle);
+      if (cachedAuthor) {
+        if (window.SNR_DEBUG) {
+          extLog.debug('Using cached author score', {
+            author: authorHandle,
+            score: cachedAuthor.score,
+            category: cachedAuthor.category
+          });
+        }
+        return { ...cachedAuthor, fromCache: true };
+      }
     }
     
-    let result;
-    let methodUsed;
+    // Check pattern cache for similar content
+    const contentHash = this.hashContent(tweetData.text);
+    const cachedPattern = this.patternCache.get(contentHash);
+    if (cachedPattern && Date.now() - cachedPattern.timestamp < this.cacheTimeout) {
+      if (window.SNR_DEBUG) {
+        extLog.debug('Using cached pattern analysis', {
+          score: cachedPattern.data.score,
+          category: cachedPattern.data.category
+        });
+      }
+      return { ...cachedPattern.data, fromCache: true };
+    }
     
-    // Try local LLM first if enabled
+    // Quick heuristic pre-filter for obvious signals/noise
+    const heuristicResult = this.quickHeuristicFilter(tweetData);
+    if (heuristicResult && heuristicResult.confidence >= 0.9) {
+      if (window.SNR_DEBUG) {
+        extLog.debug('Heuristic filter result', {
+          score: heuristicResult.score,
+          category: heuristicResult.category,
+          reason: heuristicResult.reason
+        });
+      }
+      
+      // Cache the result
+      this.cacheAnalysisResult(tweetData, heuristicResult);
+      return heuristicResult;
+    }
+    
+    // Use LLM for ambiguous content
     if (this.settings.useLocalLLM && this.llmService) {
       if (window.SNR_DEBUG) extLog.debug('Attempting local LLM analysis');
       // Pass full tweet data for multi-agent analysis
       const llmResult = await this.llmService.analyzeTweet(tweetData.text, this.userPreferences, tweetData);
       if (llmResult) {
-        result = llmResult;
-        methodUsed = llmResult.agentCount ? `Local LLM (${llmResult.agentCount} agents)` : 'Local LLM';
+        const methodUsed = llmResult.agentCount ? `Local LLM (${llmResult.agentCount} agents)` : 'Local LLM';
+        
+        if (window.SNR_DEBUG) {
+          extLog.debug('Analysis complete', {
+            method: methodUsed,
+            score: llmResult.score,
+            isSignal: llmResult.isSignal,
+            category: llmResult.category,
+            confidence: llmResult.confidence,
+            reason: llmResult.reason,
+            agentScores: llmResult.agentScores
+          });
+        }
+        
+        // Cache the result
+        this.cacheAnalysisResult(tweetData, llmResult);
+        return llmResult;
       } else {
-        if (window.SNR_DEBUG) extLog.debug('Local LLM failed, trying next method');
+        if (window.SNR_DEBUG) extLog.debug('Local LLM not available - skipping analysis');
+        return null; // No analysis if LLM is not available
       }
     }
     
-    // Then try cloud AI if enabled and LLM didn't work
-    if (!result && this.settings.useAI && this.settings.apiKey) {
-      if (window.SNR_DEBUG) extLog.debug('Attempting cloud AI analysis');
-      result = await this.analyzeWithAI(tweetData);
-      methodUsed = 'Cloud AI';
+    // No LLM configured or available - return null
+    if (window.SNR_DEBUG) extLog.debug('Local LLM not enabled - no analysis performed');
+    return null;
+  }
+  
+  quickHeuristicFilter(tweetData) {
+    const text = tweetData.text.toLowerCase();
+    const author = tweetData.author?.handle?.toLowerCase() || '';
+    
+    // High-confidence signal patterns
+    const signalKeywords = [
+      'yc', 'y combinator', 'ycombinator',
+      'claude', 'anthropic', 'openai', 'gpt-4', 'llm',
+      'shipped', 'launched', 'built', 'deployed',
+      'github.com', 'arxiv.org',
+      'api', 'sdk', 'framework',
+      'seed round', 'series a', 'funding',
+      'open source', 'oss'
+    ];
+    
+    // High-confidence noise patterns
+    const noiseKeywords = [
+      'celebrity', 'red carpet', 'gossip', 'scandal',
+      'recipe', 'cooking', 'baking', 'ingredients',
+      'skincare', 'makeup', 'fashion', 'outfit',
+      'dating', 'relationship', 'boyfriend', 'girlfriend',
+      'horoscope', 'zodiac', 'astrology'
+    ];
+    
+    // Check for strong signal indicators
+    const hasStrongSignal = signalKeywords.some(keyword => text.includes(keyword));
+    const hasCodeBlock = text.includes('```') || text.includes('function') || text.includes('const ');
+    const hasGithubLink = tweetData.links?.some(l => l.domain === 'github.com');
+    const hasArxivLink = tweetData.links?.some(l => l.domain === 'arxiv.org');
+    
+    if (hasStrongSignal || hasCodeBlock || hasGithubLink || hasArxivLink) {
+      return {
+        score: 90,
+        isSignal: true,
+        category: 'high-signal',
+        reason: 'Strong tech/startup indicators',
+        confidence: 0.95,
+        method: 'heuristic'
+      };
     }
     
-    // Default to heuristics if nothing else worked
-    if (!result) {
-      if (window.SNR_DEBUG) extLog.debug('Using heuristic analysis');
-      result = this.analyzeWithHeuristics(tweetData);
-      methodUsed = 'Heuristics';
+    // Check for strong noise indicators
+    const hasStrongNoise = noiseKeywords.some(keyword => text.includes(keyword));
+    const isLifestyleContent = text.includes('my morning routine') || 
+                               text.includes('life hack') ||
+                               text.includes('hot take');
+    
+    if (hasStrongNoise || isLifestyleContent) {
+      return {
+        score: 10,
+        isSignal: false,
+        category: 'noise',
+        reason: 'Lifestyle/entertainment content',
+        confidence: 0.95,
+        method: 'heuristic'
+      };
     }
     
-    if (window.SNR_DEBUG) {
-      extLog.debug('Analysis complete', {
-        method: methodUsed,
-        score: result.score,
-        isSignal: result.isSignal,
-        confidence: result.confidence,
-        reason: result.reason,
-        agentScores: result.agentScores
-      });
+    // Check author reputation (if we have cached data)
+    const knownTechAccounts = ['sama', 'paulg', 'elonmusk', 'patrickc', 'balajis'];
+    const knownNoiseAccounts = ['celebgossip', 'foodnetwork', 'espn'];
+    
+    if (knownTechAccounts.some(acc => author.includes(acc))) {
+      return {
+        score: 85,
+        isSignal: true,
+        category: 'high-signal',
+        reason: 'Known tech leader account',
+        confidence: 0.9,
+        method: 'heuristic'
+      };
     }
     
-    return result;
+    if (knownNoiseAccounts.some(acc => author.includes(acc))) {
+      return {
+        score: 5,
+        isSignal: false,
+        category: 'noise',
+        reason: 'Known entertainment account',
+        confidence: 0.9,
+        method: 'heuristic'
+      };
+    }
+    
+    // No strong signals either way - let LLM decide
+    return null;
   }
   
   async loadCategoryWeights(category) {
@@ -270,159 +392,56 @@ class TweetAnalyzer {
     return Math.round(num);
   }
 
-  analyzeWithHeuristics(data) {
-    let score = 50; // Start at neutral
-    
-    // Text analysis
-    const textLength = data.text.length;
-    if (textLength > 280) {
-      score += this.weights.textLength * 20;
-    } else if (textLength < 50) {
-      score -= this.weights.textLength * 10;
+  // Cache helper methods
+  getCachedAuthorScore(handle) {
+    const cached = this.authorCache.get(handle);
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.data;
     }
-    
-    // Check for all caps
-    const capsRatio = this.calculateCapsRatio(data.text);
-    if (capsRatio > 0.5) {
-      score += this.weights.capsRatio * 30;
-    }
-    
-    // Emoji density
-    const emojiDensity = this.calculateEmojiDensity(data.text);
-    if (emojiDensity > 0.2) {
-      score += this.weights.emojiDensity * 20;
-    }
-    
-    // Media and links
-    if (data.hasMedia) score += this.weights.hasMedia * 20;
-    if (data.hasExternalLinks) score += this.weights.hasLinks * 30;
-    if (data.isThread) score += this.weights.isThread * 40;
-    if (data.isVerified) score += this.weights.isVerified * 10;
-    if (data.isReply) score += this.weights.isReply * 10;
-    
-    // Engagement ratio (if metrics available)
-    const totalEngagement = data.metrics.likes + data.metrics.retweets + data.metrics.replies;
-    if (totalEngagement > 100) {
-      const engagementScore = Math.min(20, totalEngagement / 50);
-      score += this.weights.engagementRatio * engagementScore;
-    }
-    
-    // Check for hashtag spam
-    const hashtagCount = (data.text.match(/#/g) || []).length;
-    if (hashtagCount > 3) {
-      score += this.weights.hasHashtags * (hashtagCount * 5);
-    }
-    
-    // Noise patterns
-    const noisePatterns = [
-      /breaking:/i,
-      /BREAKING:/,
-      /🚨/,
-      /RT if/i,
-      /Like if/i,
-      /ratio/i,
-      /L \+ ratio/i,
-      /mid /i,
-      /cringe/i,
-      /based/i,
-      /cope/i,
-      /seethe/i
-    ];
-    
-    const hasNoisePattern = noisePatterns.some(pattern => pattern.test(data.text));
-    if (hasNoisePattern) {
-      score -= 20;
-    }
-    
-    // Signal patterns
-    const signalPatterns = [
-      /study|research|paper|analysis/i,
-      /according to|data shows|report/i,
-      /thread:/i,
-      /explained:/i,
-      /TIL:|Today I learned/i,
-      /interesting|insight|perspective/i
-    ];
-    
-    const hasSignalPattern = signalPatterns.some(pattern => pattern.test(data.text));
-    if (hasSignalPattern) {
-      score += 15;
-    }
-    
-    // Ensure score is between 0 and 100
-    score = Math.max(0, Math.min(100, score));
-    
-    // Generate reasoning for heuristic analysis
-    let reasons = [];
-    if (data.isThread) reasons.push('part of a thread');
-    if (data.hasExternalLinks) reasons.push('contains external links');
-    if (data.hasMedia) reasons.push('includes media');
-    if (capsRatio > 0.5) reasons.push('excessive caps');
-    if (emojiDensity > 0.2) reasons.push('high emoji density');
-    if (hashtagCount > 3) reasons.push('hashtag spam');
-    if (hasNoisePattern) reasons.push('contains noise patterns');
-    if (hasSignalPattern) reasons.push('contains signal indicators');
-    
-    const reason = reasons.length > 0 
-      ? `Heuristic analysis: ${reasons.join(', ')}`
-      : 'Heuristic analysis based on content patterns';
-    
-    return {
-      score,
-      isSignal: score >= (100 - this.settings.threshold),
-      confidence: 'heuristic',
-      reason
-    };
+    return null;
   }
-
-  async analyzeWithAI(data) {
-    // This would be implemented in the background script
-    // Send message to background script for API call
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        extLog.warn('AI analysis timed out, falling back to heuristics');
-        resolve(this.analyzeWithHeuristics(data));
-      }, 5000); // 5 second timeout
-      
-      chrome.runtime.sendMessage({
-        action: 'analyzeTweet',
-        text: data.text,
-        apiKey: this.settings.apiKey,
-        tweetData: data // Include full tweet data for training
-      }, (response) => {
-        clearTimeout(timeout);
-        
-        if (chrome.runtime.lastError) {
-          extLog.warn('Chrome runtime error', { error: chrome.runtime.lastError.message });
-          resolve(this.analyzeWithHeuristics(data));
-        } else if (response && response.score !== undefined) {
-          resolve({
-            score: response.score,
-            isSignal: response.score >= (100 - this.settings.threshold),
-            confidence: 'ai',
-            reason: response.reason || 'AI analysis'
-          });
-        } else {
-          // Fallback to heuristics if AI fails
-          resolve(this.analyzeWithHeuristics(data));
-        }
+  
+  hashContent(text) {
+    // Simple hash for pattern matching (first 100 chars + length)
+    const normalized = text.toLowerCase().trim().substring(0, 100);
+    return `${normalized.length}_${normalized}`;
+  }
+  
+  cacheAnalysisResult(tweetData, result) {
+    // Cache by author if high confidence
+    if (tweetData.author?.handle && result.confidence >= 0.8) {
+      this.authorCache.set(tweetData.author.handle, {
+        data: {
+          score: result.score,
+          isSignal: result.isSignal,
+          category: result.category,
+          reason: `Cached from: ${result.reason}`,
+          confidence: result.confidence * 0.9 // Slightly reduce confidence for cached results
+        },
+        timestamp: Date.now()
       });
-    });
-  }
-
-  calculateCapsRatio(text) {
-    const letters = text.replace(/[^a-zA-Z]/g, '');
-    if (letters.length === 0) return 0;
+      
+      // Clean old cache entries if too large
+      if (this.authorCache.size > 500) {
+        const oldestKey = Array.from(this.authorCache.entries())
+          .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
+        this.authorCache.delete(oldestKey);
+      }
+    }
     
-    const upperCount = (text.match(/[A-Z]/g) || []).length;
-    return upperCount / letters.length;
-  }
-
-  calculateEmojiDensity(text) {
-    // Simple emoji detection
-    const emojiRegex = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
-    const emojiCount = (text.match(emojiRegex) || []).length;
-    return text.length > 0 ? emojiCount / text.length : 0;
+    // Cache by content pattern
+    const contentHash = this.hashContent(tweetData.text);
+    this.patternCache.set(contentHash, {
+      data: result,
+      timestamp: Date.now()
+    });
+    
+    // Clean pattern cache if too large
+    if (this.patternCache.size > 1000) {
+      const oldestKey = Array.from(this.patternCache.entries())
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
+      this.patternCache.delete(oldestKey);
+    }
   }
 }
 

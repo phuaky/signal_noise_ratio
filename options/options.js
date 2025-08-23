@@ -28,18 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     'logPerformanceMetrics'
   ]);
 
-  // Determine analysis method
-  let analysisMethod = 'heuristic';
-  if (settings.useLocalLLM) {
-    analysisMethod = 'local-llm';
-  } else if (settings.useAI) {
-    analysisMethod = 'cloud-ai';
-  }
-
-  // Set form values
-  document.querySelector(`input[name="analysis-method"][value="${analysisMethod}"]`).checked = true;
-  document.getElementById('api-provider').value = settings.apiProvider || 'anthropic';
-  document.getElementById('api-key').value = settings.apiKey || '';
+  // Local LLM is the only method now - no need to set radio buttons
+  // Remove API provider and key settings since we don't use them
   document.getElementById('show-indicators').checked = settings.showIndicators !== false;
   document.getElementById('auto-hide').checked = settings.autoHide || false;
   document.getElementById('show-dashboard').checked = settings.showDashboard !== false;
@@ -72,10 +62,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('max-stored-logs-value').textContent = settings.maxStoredLogs || 1000;
   document.getElementById('log-performance-metrics').checked = settings.logPerformanceMetrics !== false;
 
-  // Show/hide settings based on method
-  toggleMethodSettings();
-  
-  // Check LLM connection
+  // Always show LLM settings and check connection
+  document.getElementById('local-llm-settings').style.display = 'block';
   checkLLMConnection();
 
   // Update slider value display
@@ -87,15 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Toggle parallel models config
   toggleParallelModelsConfig();
 
-  // Add event listeners
-  document.querySelectorAll('input[name="analysis-method"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      toggleMethodSettings();
-      if (radio.value === 'local-llm') {
-        checkLLMConnection();
-      }
-    });
-  });
+  // No radio buttons for analysis method anymore
 
   document.getElementById('noise-threshold').addEventListener('input', updateSliderValue);
   document.getElementById('preanalysis-lookahead').addEventListener('input', updateSliderValue);
@@ -122,11 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   togglePreAnalysisSettings();
 });
 
-function toggleMethodSettings() {
-  const method = document.querySelector('input[name="analysis-method"]:checked').value;
-  document.getElementById('local-llm-settings').style.display = method === 'local-llm' ? 'block' : 'none';
-  document.getElementById('cloud-ai-settings').style.display = method === 'cloud-ai' ? 'block' : 'none';
-}
+// Removed toggleMethodSettings - no longer needed since only local LLM is supported
 
 async function checkLLMConnection() {
   const statusEl = document.getElementById('llm-status');
@@ -183,13 +159,10 @@ function togglePreAnalysisSettings() {
 }
 
 async function saveSettings() {
-  const method = document.querySelector('input[name="analysis-method"]:checked').value;
-  
+  // Always use local LLM, never cloud AI
   const settings = {
-    useAI: method === 'cloud-ai',
-    useLocalLLM: method === 'local-llm',
-    apiProvider: document.getElementById('api-provider').value,
-    apiKey: document.getElementById('api-key').value,
+    useAI: false,
+    useLocalLLM: true,
     showIndicators: document.getElementById('show-indicators').checked,
     autoHide: document.getElementById('auto-hide').checked,
     showDashboard: document.getElementById('show-dashboard').checked,

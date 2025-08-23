@@ -93,7 +93,7 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// Multi-agent analysis endpoint
+// Simplified content-only analysis endpoint
 app.post('/analyze-multi-agent', async (req, res) => {
   const { tweetData, userPreferences = {} } = req.body;
   
@@ -101,30 +101,22 @@ app.post('/analyze-multi-agent', async (req, res) => {
     return res.status(400).json({ error: 'Tweet data with text is required' });
   }
 
-  // Log incoming request
+  // Just analyze the content, ignore author and media
   const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  logger.debug('Multi-Agent Analysis Request', {
-    requestId,
-    tweet: tweetData.text,
-    author: tweetData.author?.handle || 'unknown',
-    hasMedia: tweetData.hasMedia,
-    linkCount: tweetData.links?.length || 0
-  });
-
+  
   try {
     const startTime = Date.now();
-    const result = await ollamaClient.analyzeWithMultipleAgents(tweetData, userPreferences);
+    const result = await ollamaClient.analyzeContent(tweetData.text, userPreferences);
     const latency = Date.now() - startTime;
 
-    // Log response
     logger.logTweetAnalysis({
       requestId,
       tweet: tweetData.text,
       score: result.score,
       isSignal: result.isSignal,
-      reason: result.reason || 'Multi-agent consensus',
+      reason: result.reason,
       latency,
-      model: `Multi-Agent (${result.agentCount} agents)`
+      model: 'Content Analysis'
     });
 
     res.json({
@@ -133,9 +125,9 @@ app.post('/analyze-multi-agent', async (req, res) => {
       requestId
     });
   } catch (error) {
-    logger.logError('Multi-agent analysis', error, requestId);
+    logger.logError('Content analysis', error, requestId);
     res.status(500).json({
-      error: 'Multi-agent analysis failed',
+      error: 'Content analysis failed',
       score: 50,
       isSignal: false,
       confidence: 'error'
@@ -165,13 +157,8 @@ app.post('/analyze', async (req, res) => {
   try {
     const startTime = Date.now();
     
-    // Check if we should use multi-agent (if tweetData is provided)
-    let result;
-    if (req.body.tweetData) {
-      result = await ollamaClient.analyzeWithMultipleAgents(req.body.tweetData, userPreferences);
-    } else {
-      result = await ollamaClient.analyzeTweet(text, userPreferences);
-    }
+    // Always use simple content analysis
+    const result = await ollamaClient.analyzeContent(text, userPreferences);
     
     const latency = Date.now() - startTime;
 

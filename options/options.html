@@ -47,30 +47,19 @@
         </label>
       </div>
 
-      <div id="local-llm-settings" class="ai-settings" style="display: none;">
+      <!-- Local LLM Status (Always shown) -->
+      <div id="local-llm-settings" class="ai-settings">
         <div class="setting-group">
           <p class="info-text">
-            <strong>Status:</strong> <span id="llm-status">Checking connection...</span>
+            <strong>Ollama Status:</strong> <span id="llm-status">Checking connection...</span>
           </p>
           <p class="info-text">
             Make sure the local server is running:
             <code>cd server && npm start</code>
           </p>
-        </div>
-      </div>
-
-      <div id="cloud-ai-settings" class="ai-settings" style="display: none;">
-        <div class="setting-group">
-          <label for="api-provider">API Provider:</label>
-          <select id="api-provider">
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai">OpenAI (GPT)</option>
-          </select>
-        </div>
-        <div class="setting-group">
-          <label for="api-key">API Key:</label>
-          <input type="password" id="api-key" placeholder="Enter your API key">
-          <small>Your API key is stored locally and never shared</small>
+          <div style="margin-top: 12px; padding: 12px; background: #eff6ff; border-radius: 6px; border: 1px solid #bfdbfe;">
+            <strong style="color: #2563eb;">📝 Note:</strong> Tweets will only be analyzed when Ollama is connected. No fallback methods are available.
+          </div>
         </div>
       </div>
     </section>

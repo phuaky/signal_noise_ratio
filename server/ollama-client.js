@@ -2,11 +2,12 @@ import fetch from 'node-fetch';
 import logger from './logger.js';
 
 class OllamaClient {
-  constructor(host = 'http://localhost:11434') {
+  constructor(host = 'http://localhost:11434', debug = false) {
     this.host = host;
-    this.defaultModel = 'llama3.2:3b'; // Using 3B model for better quality
+    this.defaultModel = 'llama3.2:3b'; // Using Llama 3.2 for better JSON compliance
     this.accountCache = new Map(); // Cache for account scores
     this.cacheTimeout = 3600000; // 1 hour cache
+    this.debug = debug || process.env.OLLAMA_DEBUG === 'true'; // Enable debug via env var
   }
 
   async checkHealth() {
@@ -63,22 +64,18 @@ class OllamaClient {
   }
 
   async analyzeTweet(tweetText, userPreferences = {}) {
-    // Single agent analysis (for backward compatibility)
+    // Main analysis method - content only
     return this.analyzeContent(tweetText, userPreferences);
   }
   
+  // REMOVED: Multi-agent analysis - now using content-only
+  /*
   async analyzeWithMultipleAgents(tweetData, userPreferences = {}) {
     const analysisId = `multi_${Date.now().toString(36)}`;
     
-    console.log('\n╔══════════════════════════════════════════════════════════════╗');
-    console.log('║               MULTI-AGENT ANALYSIS STARTING                  ║');
-    console.log('╚══════════════════════════════════════════════════════════════╝');
-    console.log(`Analysis ID: ${analysisId}`);
-    console.log(`Tweet preview: "${tweetData.text.substring(0, 80)}..."`);
-    console.log(`Author: ${tweetData.author?.handle || 'unknown'}`);
-    console.log(`Has media: ${tweetData.hasMedia ? 'Yes' : 'No'}`);
-    console.log(`External links: ${tweetData.links?.length || 0}`);
-    console.log(`\nRunning 3 agents in parallel...\n`);
+    if (this.debug) {
+      console.log(`[Multi-Agent] Starting analysis ${analysisId} for @${tweetData.author?.handle || 'unknown'}`);
+    }
     
     const startTime = Date.now();
     
@@ -98,79 +95,38 @@ class OllamaClient {
       media: mediaResult.status === 'fulfilled' ? mediaResult.value : null
     };
     
-    console.log('\n╔══════════════════════════════════════════════════════════════╗');
-    console.log('║                    AGENT RESULTS SUMMARY                     ║');
-    console.log('╚══════════════════════════════════════════════════════════════╝');
-    
-    // Account Agent Summary
-    console.log('\n📱 ACCOUNT AGENT:');
-    if (results.account) {
-      console.log(`   Score: ${results.account.score}/100 ${results.account.fromCache ? '(cached)' : ''}`);
-      console.log(`   Signal: ${results.account.isSignal ? '✓ YES' : '✗ NO'}`);
-      console.log(`   Reason: ${results.account.reason}`);
-      console.log(`   Confidence: ${(results.account.confidence * 100).toFixed(0)}%`);
-    } else {
-      console.log('   ❌ Failed to analyze');
-    }
-    
-    // Content Agent Summary
-    console.log('\n📝 CONTENT AGENT:');
-    if (results.content) {
-      console.log(`   Score: ${results.content.score}/100`);
-      console.log(`   Signal: ${results.content.isSignal ? '✓ YES' : '✗ NO'}`);
-      console.log(`   Reason: ${results.content.reason}`);
-      console.log(`   Confidence: ${(results.content.confidence * 100).toFixed(0)}%`);
-    } else {
-      console.log('   ❌ Failed to analyze');
-    }
-    
-    // Media Agent Summary
-    console.log('\n🖼️  MEDIA AGENT:');
-    if (results.media) {
-      console.log(`   Score: ${results.media.score}/100`);
-      console.log(`   Signal: ${results.media.isSignal ? '✓ YES' : '✗ NO'}`);
-      console.log(`   Reason: ${results.media.reason}`);
-      console.log(`   Confidence: ${(results.media.confidence * 100).toFixed(0)}%`);
-    } else {
-      console.log('   ❌ Failed to analyze');
+    if (this.debug) {
+      console.log(`[Multi-Agent] Results:`);
+      if (results.account) console.log(`  Account: ${results.account.score} (${results.account.reason})`);
+      if (results.content) console.log(`  Content: ${results.content.score} (${results.content.reason})`);
+      if (results.media) console.log(`  Media: ${results.media.score} (${results.media.reason})`);
     }
     
     // Aggregate results
     const aggregated = await this.aggregateResults(results, userPreferences);
     
-    console.log('\n╔══════════════════════════════════════════════════════════════╗');
-    console.log('║                      FINAL AGGREGATED RESULT                 ║');
-    console.log('╚══════════════════════════════════════════════════════════════╝');
-    console.log(`🎯 FINAL SCORE: ${aggregated.score}/100`);
-    console.log(`📊 SIGNAL STATUS: ${aggregated.isSignal ? '✅ HIGH SIGNAL' : '❌ NOISE'}`);
-    console.log(`🤖 AGENTS USED: ${aggregated.agentCount}`);
-    console.log(`⏱️  TOTAL TIME: ${parallelTime}ms`);
-    console.log(`\n💭 COMBINED REASONING:`);
-    console.log(`   ${aggregated.reason}`);
-    console.log('\n════════════════════════════════════════════════════════════════\n');
+    if (this.debug) {
+      console.log(`[Multi-Agent] Final: Score=${aggregated.score}, Signal=${aggregated.isSignal}, Time=${parallelTime}ms`);
+    }
     
     return aggregated;
   }
+  */
   
   async analyzeContent(tweetText, userPreferences = {}) {
     const prompt = this.buildAnalysisPrompt(tweetText, userPreferences);
     const requestId = `content_${Date.now().toString(36)}`;
     
-    console.log('\n=== CONTENT AGENT ANALYSIS ===');
-    console.log(`Request ID: ${requestId}`);
-    console.log(`Tweet text: "${tweetText.substring(0, 100)}${tweetText.length > 100 ? '...' : ''}"`);
-    console.log(`User preferences:`);
-    console.log(`  Interests: ${userPreferences.interests?.join(', ') || 'none'}`);
-    console.log(`  Signal patterns: ${userPreferences.signalPatterns?.join(', ') || 'none'}`);
-    console.log(`  Noise patterns: ${userPreferences.noisePatterns?.join(', ') || 'none'}`);
-    console.log(`  Threshold: ${userPreferences.threshold || 30}`);
+    if (this.debug) {
+      console.log(`[Content Agent] Analyzing tweet (${requestId})`);
+    }
     
     try {
       const startTime = Date.now();
       
-      console.log('\n--- CONTENT AGENT PROMPT ---');
-      console.log(prompt);
-      console.log('--- END PROMPT ---\n');
+      if (this.debug) {
+        console.log(`[Content Agent] Sending prompt...`);
+      }
       
       const response = await this.generateCompletion(prompt, {
         temperature: 0.1,
@@ -179,21 +135,18 @@ class OllamaClient {
       
       const latency = Date.now() - startTime;
       
-      console.log('--- CONTENT AGENT RAW RESPONSE ---');
-      console.log(response);
-      console.log('--- END RESPONSE ---\n');
+      // Log raw response only in debug mode
+      if (this.debug) {
+        console.log(`[Content Agent] Response received: ${response.substring(0, 100)}...`);
+      }
 
       const threshold = userPreferences.threshold || 70;
       const parsed = this.parseAnalysisResponse(response, threshold);
       parsed.agentType = 'content';
       
-      console.log('--- CONTENT AGENT RESULT ---');
-      console.log(`Score: ${parsed.score}`);
-      console.log(`Is Signal: ${parsed.isSignal}`);
-      console.log(`Reason: ${parsed.reason}`);
-      console.log(`Confidence: ${parsed.confidence}`);
-      console.log(`Latency: ${latency}ms`);
-      console.log('=== END CONTENT AGENT ===\n');
+      if (this.debug) {
+        console.log(`[Content Agent] Score=${parsed.score}, Category=${parsed.category}, Signal=${parsed.isSignal}, Latency=${latency}ms`);
+      }
       
       return parsed;
     } catch (error) {
@@ -209,74 +162,93 @@ class OllamaClient {
   }
 
   buildAnalysisPrompt(tweetText, userPreferences = {}) {
-    // This is now the content-focused prompt
-    const { interests = [], signalPatterns = [], noisePatterns = [] } = userPreferences;
-    
-    let contextParts = [];
-    
-    if (interests.length > 0) {
-      contextParts.push(`User interests: ${interests.join(', ')}`);
-    }
-    
-    if (signalPatterns.length > 0) {
-      contextParts.push(`Signal indicators (rate higher): ${signalPatterns.join(', ')}`);
-    }
-    
-    if (noisePatterns.length > 0) {
-      contextParts.push(`Noise indicators (rate lower): ${noisePatterns.join(', ')}`);
-    }
-    
-    const contextSection = contextParts.length > 0 
-      ? contextParts.join('\n') + '\n\n' 
-      : '';
+    // Streamlined prompt with pattern matching
+    return `You are a tech content filter. Rate tweets 0-100.
 
-    return `You are a tweet content analyzer. Focus ONLY on the text content quality, ignoring who posted it.
+SIGNAL PATTERNS (80-100):
+• AI/ML/LLM research, models, tools
+• Startups, YC, funding, building
+• Code, APIs, technical tutorials
+• Open source, developer tools
 
-${contextSection}Analyze this tweet and respond with ONLY a JSON object:
+NOISE PATTERNS (0-30):
+• Entertainment, celebrity, lifestyle
+• Food, fashion, dating, sports
+• Personal drama, political rants
 
-Tweet: "${tweetText}"
+Tweet: "${tweetText.substring(0, 500)}"
 
-Response format:
-{
-  "score": <0-100 where 100 is highest signal>,
-  "reason": "<one sentence explanation>",
-  "confidence": <0.0-1.0>
-}
+Respond with JSON only:
+{"score": <0-100>, "reason": "<10 words max>", "confidence": <0.0-1.0>}
 
 Examples:
-Tweet: "Just published our research on quantum computing applications in drug discovery. We found that quantum algorithms can reduce computation time by 40% for molecular simulations. Link to paper: [...]"
-{"score": 95, "reason": "Original research with specific findings and data", "confidence": 0.95}
+"Shipped YC-backed AI coding assistant with novel attention mechanism"
+{"score": 95, "reason": "YC startup launching AI developer tool", "confidence": 0.95}
 
-Tweet: "BREAKING: You won't BELIEVE what just happened!!! This changes EVERYTHING!!! 🤯🤯🤯"
-{"score": 10, "reason": "Pure clickbait with no informational content", "confidence": 0.9}
+"Celebrity drama at red carpet event last night"
+{"score": 5, "reason": "Entertainment gossip content", "confidence": 0.99}
 
-Tweet: "Thread on building scalable systems: 1/ Start with a monolith 2/ Profile before optimizing 3/ Cache aggressively but invalidate wisely 4/ Database indexes are your friend 5/ Monitor everything"
-{"score": 85, "reason": "Practical technical advice with actionable insights", "confidence": 0.85}
-
-Tweet: "Hot take: Python > JavaScript for backend development. Better ecosystem, cleaner syntax, more mature tooling. Fight me."
-{"score": 45, "reason": "Opinion without supporting evidence or depth", "confidence": 0.7}
-
-Tweet: "Anyone else tired of all the drama? Just vibing today fr fr no cap"
-{"score": 15, "reason": "No informational value, just mood posting", "confidence": 0.8}
-
-Now analyze the given tweet:`;
+"Thread: Scaling API to 1M req/s with Rust"
+{"score": 90, "reason": "Technical infrastructure deep-dive", "confidence": 0.9}`;
   }
 
   parseAnalysisResponse(response, threshold = 70) {
     try {
       // Try to extract JSON from response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      const jsonMatch = response.match(/\{[\s\S]*?\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         const score = Math.max(0, Math.min(100, parsed.score || 50));
+        
+        // Simplified scoring with confidence levels
+        let category;
+        if (score >= 80) {
+          category = 'high-signal';
+        } else if (score >= threshold) {
+          category = 'signal';
+        } else if (score >= 40) {
+          category = 'medium';
+        } else {
+          category = 'noise';
+        }
+        
         return {
           score,
-          isSignal: score >= (100 - threshold), // Convert threshold to signal cutoff
+          isSignal: score >= threshold, // Direct threshold comparison
+          category, // New field for multi-level classification
           reason: parsed.reason || 'No reason provided',
           confidence: parsed.confidence || 0.5
         };
       }
     } catch (error) {
+      // Try alternative parsing for common patterns
+      const scoreMatch = response.match(/"score"\s*:\s*(\d+)/);
+      const reasonMatch = response.match(/"reason"\s*:\s*"([^"]*)"/);
+      const confidenceMatch = response.match(/"confidence"\s*:\s*([\d.]+)/);
+      
+      if (scoreMatch) {
+        const score = Math.max(0, Math.min(100, parseInt(scoreMatch[1])));
+        
+        let category;
+        if (score >= 80) {
+          category = 'high-signal';
+        } else if (score >= threshold) {
+          category = 'signal';
+        } else if (score >= 40) {
+          category = 'medium';
+        } else {
+          category = 'noise';
+        }
+        
+        return {
+          score,
+          isSignal: score >= threshold,
+          category,
+          reason: reasonMatch ? reasonMatch[1] : 'Partial parse',
+          confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5
+        };
+      }
+      
       logger.logError('Parsing LLM response', error);
     }
 
@@ -284,34 +256,104 @@ Now analyze the given tweet:`;
     return {
       score: 50,
       isSignal: false,
+      category: 'medium',
       reason: 'Could not parse response',
       confidence: 0
     };
   }
 
-  async analyzeTweetBatch(tweets, userInterests = []) {
-    // Batch analysis for efficiency
-    const batchPrompt = this.buildBatchPrompt(tweets, userInterests);
+  async analyzeTweetBatch(tweets, userPreferences = {}) {
+    // Improved batch analysis with pre-filtering
+    const results = [];
+    const needsLLM = [];
     
-    try {
-      const response = await this.generateCompletion(batchPrompt, {
-        temperature: 0.1,
-        max_tokens: 500
-      });
-
-      return this.parseBatchResponse(response, tweets.length);
-    } catch (error) {
-      logger.logError('Batch analysis', error);
-      // Return neutral scores for all tweets
-      return tweets.map(() => ({
-        score: 50,
-        isSignal: false,
-        reason: 'Batch analysis failed',
-        confidence: 'error'
-      }));
+    // First pass: apply heuristics
+    for (let i = 0; i < tweets.length; i++) {
+      const tweet = tweets[i];
+      const quickResult = this.quickHeuristicCheck(tweet.text);
+      
+      if (quickResult && quickResult.confidence >= 0.9) {
+        results[i] = quickResult;
+      } else {
+        needsLLM.push({ index: i, tweet });
+        results[i] = null; // Placeholder
+      }
     }
+    
+    // Second pass: batch LLM for ambiguous tweets
+    if (needsLLM.length > 0) {
+      const batchPrompt = this.buildCompactBatchPrompt(needsLLM, userPreferences);
+      
+      try {
+        const response = await this.generateCompletion(batchPrompt, {
+          temperature: 0.1,
+          max_tokens: 20 * needsLLM.length // ~20 tokens per tweet
+        });
+        
+        const llmResults = this.parseBatchResponse(response, needsLLM.length, userPreferences.threshold || 70);
+        
+        // Merge LLM results
+        for (let i = 0; i < needsLLM.length; i++) {
+          results[needsLLM[i].index] = llmResults[i];
+        }
+      } catch (error) {
+        logger.logError('Batch LLM analysis', error);
+        // Fill with medium confidence scores
+        for (const item of needsLLM) {
+          results[item.index] = {
+            score: 50,
+            isSignal: false,
+            category: 'medium',
+            reason: 'Analysis error',
+            confidence: 0
+          };
+        }
+      }
+    }
+    
+    return results;
+  }
+  
+  quickHeuristicCheck(text) {
+    const lower = text.toLowerCase();
+    
+    // Very high confidence signals
+    if (lower.includes('yc') || lower.includes('anthropic') || lower.includes('github.com')) {
+      return {
+        score: 90,
+        isSignal: true,
+        category: 'high-signal',
+        reason: 'Tech indicator',
+        confidence: 0.95
+      };
+    }
+    
+    // Very high confidence noise
+    if (lower.includes('celebrity') || lower.includes('recipe') || lower.includes('skincare')) {
+      return {
+        score: 10,
+        isSignal: false,
+        category: 'noise',
+        reason: 'Lifestyle content',
+        confidence: 0.95
+      };
+    }
+    
+    return null; // Needs LLM
   }
 
+  buildCompactBatchPrompt(tweetsWithIndex, userPreferences) {
+    const tweetList = tweetsWithIndex.map((item, i) => 
+      `${i + 1}: "${item.tweet.text.substring(0, 200)}"`
+    ).join('\n');
+
+    return `Rate tech relevance (0-100):
+${tweetList}
+
+JSON array only:
+[{"i":1,"s":<score>,"r":"<5 words>"}...]`;
+  }
+  
   buildBatchPrompt(tweets, userInterests) {
     const interestContext = userInterests.length > 0 
       ? `User interests: ${userInterests.join(', ')}\n\n` 
@@ -333,20 +375,36 @@ Respond with a JSON array where each object has:
 }`;
   }
 
-  parseBatchResponse(response, expectedCount) {
+  parseBatchResponse(response, expectedCount, threshold = 70) {
     try {
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         const results = new Array(expectedCount).fill(null);
         
-        parsed.forEach(item => {
-          if (item.index && item.index <= expectedCount) {
-            results[item.index - 1] = {
-              score: Math.max(0, Math.min(100, item.score || 50)),
-              isSignal: (item.score || 50) >= 70,
-              reason: item.reason || 'No reason provided',
-              confidence: 'llm'
+        parsed.forEach((item, idx) => {
+          const index = item.i || item.index || (idx + 1);
+          const score = Math.max(0, Math.min(100, item.s || item.score || 50));
+          
+          // Determine category
+          let category;
+          if (score >= 80) {
+            category = 'high-signal';
+          } else if (score >= threshold) {
+            category = 'signal';
+          } else if (score >= 40) {
+            category = 'medium';
+          } else {
+            category = 'noise';
+          }
+          
+          if (index <= expectedCount) {
+            results[index - 1] = {
+              score,
+              isSignal: score >= threshold,
+              category,
+              reason: item.r || item.reason || 'Batch analysis',
+              confidence: 0.8
             };
           }
         });
@@ -355,8 +413,9 @@ Respond with a JSON array where each object has:
         return results.map(r => r || {
           score: 50,
           isSignal: false,
+          category: 'medium',
           reason: 'No analysis provided',
-          confidence: 'error'
+          confidence: 0
         });
       }
     } catch (error) {
@@ -366,10 +425,13 @@ Respond with a JSON array where each object has:
     return new Array(expectedCount).fill({
       score: 50,
       isSignal: false,
+      category: 'medium',
       reason: 'Batch parsing failed',
-      confidence: 'error'
+      confidence: 0
     });
   }
+  // REMOVED: Account analysis - no longer needed
+  /*
   async analyzeAccount(author, userPreferences = {}) {
     if (!author || !author.handle) {
       return {
@@ -392,19 +454,16 @@ Respond with a JSON array where each object has:
     const prompt = this.buildAccountPrompt(author, userPreferences);
     const requestId = `acc_${Date.now().toString(36)}`;
     
-    console.log('\n=== ACCOUNT AGENT ANALYSIS ===');
-    console.log(`Request ID: ${requestId}`);
-    console.log(`Analyzing account: ${author.handle}`);
-    console.log(`Display name: ${author.displayName}`);
-    console.log(`Verified: ${author.isVerified ? 'Yes' : 'No'}`);
-    console.log(`Blue checkmark: ${author.isBlueVerified ? 'Yes' : 'No'}`);
+    if (this.debug) {
+      console.log(`[Account Agent] Analyzing @${author.handle} (${requestId})`);
+    }
     
     try {
       const startTime = Date.now();
       
-      console.log('\n--- ACCOUNT AGENT PROMPT ---');
-      console.log(prompt);
-      console.log('--- END PROMPT ---\n');
+      if (this.debug) {
+        console.log(`[Account Agent] Sending prompt...`);
+      }
       
       const response = await this.generateCompletion(prompt, {
         temperature: 0.1,
@@ -413,20 +472,16 @@ Respond with a JSON array where each object has:
       
       const latency = Date.now() - startTime;
       
-      console.log('--- ACCOUNT AGENT RAW RESPONSE ---');
-      console.log(response);
-      console.log('--- END RESPONSE ---\n');
+      if (this.debug) {
+        console.log(`[Account Agent] Response received: ${response.substring(0, 100)}...`);
+      }
       
       const parsed = this.parseAnalysisResponse(response, userPreferences.threshold || 70);
       parsed.agentType = 'account';
       
-      console.log('--- ACCOUNT AGENT RESULT ---');
-      console.log(`Score: ${parsed.score}`);
-      console.log(`Is Signal: ${parsed.isSignal}`);
-      console.log(`Reason: ${parsed.reason}`);
-      console.log(`Confidence: ${parsed.confidence}`);
-      console.log(`Latency: ${latency}ms`);
-      console.log('=== END ACCOUNT AGENT ===\n');
+      if (this.debug) {
+        console.log(`[Account Agent] Score=${parsed.score}, Signal=${parsed.isSignal}, Latency=${latency}ms`);
+      }
       
       // Cache the result
       this.accountCache.set(cacheKey, {
@@ -453,14 +508,17 @@ Respond with a JSON array where each object has:
       };
     }
   }
+  */
   
+  // REMOVED: Media analysis - no longer needed
+  /*
   async analyzeMedia(tweetData, userPreferences = {}) {
     const hasRelevantMedia = tweetData.hasMedia || tweetData.hasExternalLinks;
     
     if (!hasRelevantMedia) {
-      console.log('\n=== MEDIA AGENT ANALYSIS ===');
-      console.log('No media or links to analyze - using neutral score');
-      console.log('=== END MEDIA AGENT ===\n');
+      if (this.debug) {
+        console.log('[Media Agent] No media/links to analyze');
+      }
       return {
         score: 50,
         reason: 'No media or links to analyze',
@@ -472,21 +530,16 @@ Respond with a JSON array where each object has:
     const prompt = this.buildMediaPrompt(tweetData, userPreferences);
     const requestId = `media_${Date.now().toString(36)}`;
     
-    console.log('\n=== MEDIA AGENT ANALYSIS ===');
-    console.log(`Request ID: ${requestId}`);
-    console.log(`Media types: ${tweetData.mediaTypes?.join(', ') || 'none'}`);
-    console.log(`Links found: ${tweetData.links?.length || 0}`);
-    if (tweetData.links?.length > 0) {
-      console.log(`Link domains: ${[...new Set(tweetData.links.map(l => l.domain))].join(', ')}`);
+    if (this.debug) {
+      console.log(`[Media Agent] Analyzing media (${requestId})`);
     }
-    console.log(`Hashtags: ${tweetData.hashtags?.slice(0, 5).join(', ') || 'none'}`);
     
     try {
       const startTime = Date.now();
       
-      console.log('\n--- MEDIA AGENT PROMPT ---');
-      console.log(prompt);
-      console.log('--- END PROMPT ---\n');
+      if (this.debug) {
+        console.log(`[Media Agent] Sending prompt...`);
+      }
       
       const response = await this.generateCompletion(prompt, {
         temperature: 0.1,
@@ -495,20 +548,16 @@ Respond with a JSON array where each object has:
       
       const latency = Date.now() - startTime;
       
-      console.log('--- MEDIA AGENT RAW RESPONSE ---');
-      console.log(response);
-      console.log('--- END RESPONSE ---\n');
+      if (this.debug) {
+        console.log(`[Media Agent] Response received: ${response.substring(0, 100)}...`);
+      }
       
       const parsed = this.parseAnalysisResponse(response, userPreferences.threshold || 70);
       parsed.agentType = 'media';
       
-      console.log('--- MEDIA AGENT RESULT ---');
-      console.log(`Score: ${parsed.score}`);
-      console.log(`Is Signal: ${parsed.isSignal}`);
-      console.log(`Reason: ${parsed.reason}`);
-      console.log(`Confidence: ${parsed.confidence}`);
-      console.log(`Latency: ${latency}ms`);
-      console.log('=== END MEDIA AGENT ===\n');
+      if (this.debug) {
+        console.log(`[Media Agent] Score=${parsed.score}, Signal=${parsed.isSignal}, Latency=${latency}ms`);
+      }
       
       return parsed;
     } catch (error) {
@@ -522,73 +571,113 @@ Respond with a JSON array where each object has:
       };
     }
   }
+  */
   
+  // REMOVED: Account prompt - no longer needed
+  /*
   buildAccountPrompt(author, userPreferences = {}) {
-    const { interests = [] } = userPreferences;
-    const interestContext = interests.length > 0 
-      ? `User interests: ${interests.join(', ')}\n\n`
-      : '';
-    
-    return `You are analyzing a Twitter/X account to determine if they typically post high-signal content.
+    return `You are filtering Twitter accounts for a tech professional interested in startups and AI.
 
-${interestContext}Account details:
-- Handle: ${author.handle}
-- Display name: ${author.displayName}
-- Verified: ${author.isVerified ? 'Yes (legacy)' : 'No'}
-- Blue checkmark: ${author.isBlueVerified ? 'Yes' : 'No'}
+HIGH SIGNAL ACCOUNTS (score 80-100):
+- Founders, CTOs, technical co-founders
+- AI/ML researchers, engineers at AI companies
+- YC partners, alumni, portfolio founders
+- Developers sharing code and technical content
+- VCs focused on deep tech and AI
+- Authors writing about network states, future of tech
 
-Rate this account's typical signal quality:
+NOISE ACCOUNTS (score 0-30):
+- Entertainment reporters, gossip accounts
+- Lifestyle influencers, fashion bloggers
+- Food/cooking personalities
+- Political commentators (unless tech policy)
+- Meme accounts, joke accounts
+- Promotional/marketing spam accounts
 
+Account: ${author.handle}
+Name: ${author.displayName}
+Verified: ${author.isVerified ? 'Yes (legacy)' : 'No'}
+Blue check: ${author.isBlueVerified ? 'Yes' : 'No'}
+
+QUICK HEURISTICS:
+- Handle contains "AI", "ML", "Dev", "Tech", "Founder" → likely HIGH SIGNAL
+- Bio mentions YC, startup, building, shipping → likely HIGH SIGNAL
+- Name includes "Coach", "Guru", "Influencer" → likely NOISE
+- Entertainment/lifestyle keywords → definitely NOISE
+
+Output ONLY valid JSON, no other text or tags:
 {
   "score": <0-100>,
-  "reason": "<one sentence>",
+  "reason": "<specific reason based on account type>",
   "confidence": <0.0-1.0>
 }
+DO NOT include any thinking, explanations, or XML tags. ONLY the JSON object.
 
 Examples:
-{"score": 90, "reason": "Established researcher or industry expert", "confidence": 0.9}
-{"score": 20, "reason": "Spam or promotional account pattern", "confidence": 0.8}
-{"score": 70, "reason": "Verified journalist from reputable outlet", "confidence": 0.75}
-{"score": 30, "reason": "Anonymous account with clickbait username", "confidence": 0.7}`;
+@sama (Sam Altman, CEO of OpenAI)
+{"score": 100, "reason": "OpenAI CEO, YC former president, AI leader", "confidence": 0.99}
+
+@CelebGossip247
+{"score": 0, "reason": "Entertainment gossip account", "confidence": 0.99}
+
+@indie_hacker_bob (Bob Smith, Building in public)
+{"score": 85, "reason": "Indie founder sharing building journey", "confidence": 0.85}
+
+@paulg (Paul Graham, YC founder)
+{"score": 100, "reason": "YC founder, startup wisdom and essays", "confidence": 0.99}
+
+@FoodieInfluencer (Lifestyle & Recipes)
+{"score": 5, "reason": "Food and lifestyle content creator", "confidence": 0.95}`;
   }
+  */
   
+  // REMOVED: Media prompt - no longer needed
+  /*
   buildMediaPrompt(tweetData, userPreferences = {}) {
-    const mediaInfo = [];
+    const domains = [...new Set(tweetData.links?.map(l => l.domain) || [])];
+    const mediaTypes = tweetData.mediaTypes || [];
+    const hashtags = tweetData.hashtags || [];
     
-    if (tweetData.mediaTypes?.length > 0) {
-      mediaInfo.push(`Media types: ${tweetData.mediaTypes.join(', ')}`);
-    }
-    
-    if (tweetData.links?.length > 0) {
-      const domains = [...new Set(tweetData.links.map(l => l.domain))];
-      mediaInfo.push(`Link domains: ${domains.join(', ')}`);
-    }
-    
-    if (tweetData.hashtags?.length > 0) {
-      mediaInfo.push(`Hashtags: ${tweetData.hashtags.slice(0, 5).join(', ')}`);
-    }
-    
-    return `You are analyzing media and metadata in a tweet to determine signal quality.
+    return `Analyze the media/links in this tweet and rate their tech relevance.
 
-${mediaInfo.join('\n')}
+Tweet media information:
+${mediaTypes.length > 0 ? `- Media types: ${mediaTypes.join(', ')}` : '- No media attached'}
+${domains.length > 0 ? `- External links: ${domains.join(', ')}` : '- No external links'}
+${hashtags.length > 0 ? `- Hashtags: ${hashtags.slice(0, 5).join(', ')}` : '- No hashtags'}
 
-Rate the media/metadata quality:
+Rate based on these criteria:
+HIGH SIGNAL (80-100): GitHub, GitLab, arXiv, YC/HN, AI companies, tech blogs, code content
+NOISE (0-30): Instagram, TikTok, entertainment sites, recipes, lifestyle, sports
 
+Respond with ONLY this JSON format:
 {
   "score": <0-100>,
-  "reason": "<one sentence>",
+  "reason": "<specific reason based on media type>",
   "confidence": <0.0-1.0>
 }
+DO NOT include any thinking, explanations, or XML tags. ONLY the JSON object.
 
 Examples:
-{"score": 95, "reason": "Links to academic papers or primary sources", "confidence": 0.95}
-{"score": 15, "reason": "Clickbait domain with engagement bait hashtags", "confidence": 0.85}
-{"score": 80, "reason": "High-quality video content with educational value", "confidence": 0.8}
-{"score": 25, "reason": "Meme images with no informational content", "confidence": 0.75}`;
+Links to: github.com, arxiv.org
+{"score": 95, "reason": "Code repository and research paper links", "confidence": 0.95}
+
+Media: video, Links to: tiktok.com
+{"score": 10, "reason": "TikTok video likely lifestyle content", "confidence": 0.9}
+
+Links to: ycombinator.com
+{"score": 90, "reason": "Hacker News discussion likely technical", "confidence": 0.9}
+
+No media, No external links
+{"score": 50, "reason": "No media to evaluate, neutral score", "confidence": 0.5}
+
+Links to: instagram.com, Hashtags: #food, #recipe
+{"score": 5, "reason": "Instagram food/lifestyle content", "confidence": 0.95}`;
   }
+  */
   
+  // REMOVED: Aggregation - no longer needed with single agent
+  /*
   async aggregateResults(results, userPreferences = {}) {
-    // Simple aggregation for now - can be made more sophisticated
     const validResults = Object.values(results).filter(r => r && r.score !== undefined);
     
     if (validResults.length === 0) {
@@ -601,16 +690,13 @@ Examples:
       };
     }
     
-    // Weight the scores based on confidence
-    let totalWeight = 0;
-    let weightedSum = 0;
+    // AGGRESSIVE FILTERING - if ANY agent detects noise (score < 30), it's noise
+    const minScore = Math.min(...validResults.map(r => r.score));
     const agentScores = {};
     
+    // Build agent scores object
     for (const [agentName, result] of Object.entries(results)) {
       if (result && result.score !== undefined) {
-        const weight = result.confidence || 0.5;
-        weightedSum += result.score * weight;
-        totalWeight += weight;
         agentScores[agentName] = {
           score: result.score,
           reason: result.reason,
@@ -619,10 +705,40 @@ Examples:
       }
     }
     
-    const finalScore = Math.round(weightedSum / totalWeight);
-    const threshold = userPreferences.threshold || 70;
+    // If ANY agent says it's noise (score < 30), mark as noise
+    if (minScore < 30) {
+      // Find which agent(s) flagged it as noise
+      const noiseReasons = [];
+      if (results.account?.score < 30) noiseReasons.push(`Account: ${results.account.reason}`);
+      if (results.content?.score < 30) noiseReasons.push(`Content: ${results.content.reason}`);
+      if (results.media?.score < 30) noiseReasons.push(`Media: ${results.media.reason}`);
+      
+      return {
+        score: minScore,
+        isSignal: false,
+        reason: noiseReasons.join('; ') || 'Detected as noise content',
+        confidence: 'multi-agent',
+        agentScores,
+        agentCount: validResults.length
+      };
+    }
     
-    // Generate combined reason
+    // Otherwise, use weighted average for signal content
+    let totalWeight = 0;
+    let weightedSum = 0;
+    
+    for (const result of validResults) {
+      const weight = result.confidence || 0.5;
+      weightedSum += result.score * weight;
+      totalWeight += weight;
+    }
+    
+    const finalScore = Math.round(weightedSum / totalWeight);
+    
+    // Use stricter threshold: 80+ is signal (since we're focused on tech content)
+    const threshold = 20; // This means score >= 80 is signal
+    
+    // Generate combined reason for signal content
     const reasons = [];
     if (results.account?.reason) reasons.push(`Account: ${results.account.reason}`);
     if (results.content?.reason) reasons.push(`Content: ${results.content.reason}`);
@@ -630,13 +746,14 @@ Examples:
     
     return {
       score: finalScore,
-      isSignal: finalScore >= (100 - threshold),
+      isSignal: finalScore >= (100 - threshold), // Score >= 80 is signal
       reason: reasons.join('; '),
       confidence: 'multi-agent',
       agentScores,
       agentCount: validResults.length
     };
   }
+  */
 }
 
 export default OllamaClient;

@@ -255,6 +255,14 @@
     // Analyze tweet
     const result = await analyzer.analyzeTweet(element);
     
+    // If no result (LLM not available), skip this tweet
+    if (!result) {
+      if (window.SNR_DEBUG) {
+        extLog.debug('No analysis available - LLM not connected');
+      }
+      return;
+    }
+    
     // Get category prediction if training is enabled
     if (settings.enableTraining && trainingUI) {
       try {
@@ -396,8 +404,18 @@
       `;
     }
     
+    // Determine badge class based on category
+    let badgeClass = 'noise';
+    if (result.category === 'high-signal') {
+      badgeClass = 'high-signal';
+    } else if (result.category === 'signal' || result.isSignal) {
+      badgeClass = 'signal';
+    } else if (result.category === 'medium') {
+      badgeClass = 'medium';
+    }
+    
     indicator.innerHTML = `
-      <div class="sn-badge ${result.isSignal ? 'signal' : 'noise'}" style="position: relative;">
+      <div class="sn-badge ${badgeClass}" style="position: relative;">
         ${badgeContent}
         ${reasoningTooltip}
       </div>
@@ -427,8 +445,17 @@
       });
     }
 
-    // Add border
-    element.style.borderLeft = `3px solid ${result.isSignal ? '#10b981' : '#ef4444'}`;
+    // Add border based on category
+    let borderColor = '#ef4444'; // Default red for noise
+    if (result.category === 'high-signal') {
+      borderColor = '#10b981'; // Green
+    } else if (result.category === 'signal' || result.isSignal) {
+      borderColor = '#10b981'; // Green
+    } else if (result.category === 'medium') {
+      borderColor = '#f59e0b'; // Amber
+    }
+    
+    element.style.borderLeft = `3px solid ${borderColor}`;
     element.style.transition = 'border-color 0.3s';
   }
 

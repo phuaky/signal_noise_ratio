@@ -200,6 +200,7 @@ class LLMService {
         return {
           score: result.score,
           isSignal: result.isSignal,
+          category: result.category || (result.isSignal ? 'signal' : 'noise'),
           reason: result.reason,
           confidence: result.confidence || 'llm',
           model: result.model,
@@ -337,7 +338,6 @@ class LLMService {
       }, 5000);
     });
   }
-}
 
   // Clean up on page unload
   destroy() {
