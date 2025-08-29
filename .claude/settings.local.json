@@ -9,7 +9,10 @@
       "Bash(pkill:*)",
       "Bash(true)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(git push:*)",
+      "Bash(curl:*)",
+      "Bash(ollama run:*)"
     ],
     "deny": []
   }
