@@ -5,8 +5,7 @@ class TweetAnalyzer {
       threshold: 30,
       useAI: false,
       apiKey: '',
-      useLocalLLM: false,
-      useCategoryWeights: true
+      useLocalLLM: false
     };
     
     // Load settings
@@ -14,31 +13,6 @@ class TweetAnalyzer {
     
     // Initialize LLM service if available
     this.llmService = window.LLMService ? new window.LLMService() : null;
-    
-    // Initialize caches
-    this.authorCache = new Map(); // Cache author scores
-    this.patternCache = new Map(); // Cache pattern analysis results
-    this.cacheTimeout = 3600000; // 1 hour cache
-    
-    // Default heuristic weights
-    this.defaultWeights = {
-      hasMedia: 0.15,
-      hasLinks: 0.20,
-      isThread: 0.25,
-      textLength: 0.15,
-      engagementRatio: 0.10,
-      isVerified: 0.05,
-      hasHashtags: -0.05,
-      isReply: -0.05,
-      capsRatio: -0.15,
-      emojiDensity: -0.10
-    };
-    
-    // Category-specific weights (will be loaded from training data)
-    this.categoryWeights = {};
-    
-    // Current weights (either default or category-specific)
-    this.weights = { ...this.defaultWeights };
   }
 
   async loadSettings() {
@@ -60,210 +34,32 @@ class TweetAnalyzer {
   async analyzeTweet(tweetElement, options = {}) {
     const tweetData = this.extractTweetData(tweetElement);
     
-    if (window.SNR_DEBUG) {
-      extLog.debug('Analyzing tweet', {
-        text: tweetData.text.substring(0, 100) + (tweetData.text.length > 100 ? '...' : ''),
-        hasMedia: tweetData.hasMedia,
-        hasLinks: tweetData.hasExternalLinks,
-        isThread: tweetData.isThread,
-        isVerified: tweetData.isVerified,
-        metrics: tweetData.metrics
-      });
+    // Skip tweets without text
+    if (!tweetData.text || tweetData.text.trim().length === 0) {
+      return null;
     }
     
-    // Check author cache first
-    const authorHandle = tweetData.author?.handle;
-    if (authorHandle) {
-      const cachedAuthor = this.getCachedAuthorScore(authorHandle);
-      if (cachedAuthor) {
-        if (window.SNR_DEBUG) {
-          extLog.debug('Using cached author score', {
-            author: authorHandle,
-            score: cachedAuthor.score,
-            category: cachedAuthor.category
-          });
-        }
-        return { ...cachedAuthor, fromCache: true };
-      }
-    }
-    
-    // Check pattern cache for similar content
-    const contentHash = this.hashContent(tweetData.text);
-    const cachedPattern = this.patternCache.get(contentHash);
-    if (cachedPattern && Date.now() - cachedPattern.timestamp < this.cacheTimeout) {
-      if (window.SNR_DEBUG) {
-        extLog.debug('Using cached pattern analysis', {
-          score: cachedPattern.data.score,
-          category: cachedPattern.data.category
-        });
-      }
-      return { ...cachedPattern.data, fromCache: true };
-    }
-    
-    // Quick heuristic pre-filter for obvious signals/noise
-    const heuristicResult = this.quickHeuristicFilter(tweetData);
-    if (heuristicResult && heuristicResult.confidence >= 0.9) {
-      if (window.SNR_DEBUG) {
-        extLog.debug('Heuristic filter result', {
-          score: heuristicResult.score,
-          category: heuristicResult.category,
-          reason: heuristicResult.reason
-        });
-      }
-      
-      // Cache the result
-      this.cacheAnalysisResult(tweetData, heuristicResult);
-      return heuristicResult;
-    }
-    
-    // Use LLM for ambiguous content
+    // Use LLM for analysis (local or cloud)
     if (this.settings.useLocalLLM && this.llmService) {
-      if (window.SNR_DEBUG) extLog.debug('Attempting local LLM analysis');
-      // Pass full tweet data for multi-agent analysis
+      // Pass full tweet data for analysis
       const llmResult = await this.llmService.analyzeTweet(tweetData.text, this.userPreferences, tweetData);
       if (llmResult) {
-        const methodUsed = llmResult.agentCount ? `Local LLM (${llmResult.agentCount} agents)` : 'Local LLM';
-        
-        if (window.SNR_DEBUG) {
-          extLog.debug('Analysis complete', {
-            method: methodUsed,
-            score: llmResult.score,
-            isSignal: llmResult.isSignal,
-            category: llmResult.category,
-            confidence: llmResult.confidence,
-            reason: llmResult.reason,
-            agentScores: llmResult.agentScores
-          });
-        }
-        
-        // Cache the result
-        this.cacheAnalysisResult(tweetData, llmResult);
         return llmResult;
       } else {
-        if (window.SNR_DEBUG) extLog.debug('Local LLM not available - skipping analysis');
-        return null; // No analysis if LLM is not available
+        // LLM not available - return null
+        return null;
       }
     }
     
-    // No LLM configured or available - return null
-    if (window.SNR_DEBUG) extLog.debug('Local LLM not enabled - no analysis performed');
+    // TODO: Add cloud API support here when useAI is true
+    if (this.settings.useAI && this.settings.apiKey) {
+      // Cloud API implementation would go here
+      console.log('Cloud API analysis not yet implemented');
+      return null;
+    }
+    
+    // No analysis method configured
     return null;
-  }
-  
-  quickHeuristicFilter(tweetData) {
-    const text = tweetData.text.toLowerCase();
-    const author = tweetData.author?.handle?.toLowerCase() || '';
-    
-    // High-confidence signal patterns
-    const signalKeywords = [
-      'yc', 'y combinator', 'ycombinator',
-      'claude', 'anthropic', 'openai', 'gpt-4', 'llm',
-      'shipped', 'launched', 'built', 'deployed',
-      'github.com', 'arxiv.org',
-      'api', 'sdk', 'framework',
-      'seed round', 'series a', 'funding',
-      'open source', 'oss'
-    ];
-    
-    // High-confidence noise patterns
-    const noiseKeywords = [
-      'celebrity', 'red carpet', 'gossip', 'scandal',
-      'recipe', 'cooking', 'baking', 'ingredients',
-      'skincare', 'makeup', 'fashion', 'outfit',
-      'dating', 'relationship', 'boyfriend', 'girlfriend',
-      'horoscope', 'zodiac', 'astrology'
-    ];
-    
-    // Check for strong signal indicators
-    const hasStrongSignal = signalKeywords.some(keyword => text.includes(keyword));
-    const hasCodeBlock = text.includes('```') || text.includes('function') || text.includes('const ');
-    const hasGithubLink = tweetData.links?.some(l => l.domain === 'github.com');
-    const hasArxivLink = tweetData.links?.some(l => l.domain === 'arxiv.org');
-    
-    if (hasStrongSignal || hasCodeBlock || hasGithubLink || hasArxivLink) {
-      return {
-        score: 90,
-        isSignal: true,
-        category: 'high-signal',
-        reason: 'Strong tech/startup indicators',
-        confidence: 0.95,
-        method: 'heuristic'
-      };
-    }
-    
-    // Check for strong noise indicators
-    const hasStrongNoise = noiseKeywords.some(keyword => text.includes(keyword));
-    const isLifestyleContent = text.includes('my morning routine') || 
-                               text.includes('life hack') ||
-                               text.includes('hot take');
-    
-    if (hasStrongNoise || isLifestyleContent) {
-      return {
-        score: 10,
-        isSignal: false,
-        category: 'noise',
-        reason: 'Lifestyle/entertainment content',
-        confidence: 0.95,
-        method: 'heuristic'
-      };
-    }
-    
-    // Check author reputation (if we have cached data)
-    const knownTechAccounts = ['sama', 'paulg', 'elonmusk', 'patrickc', 'balajis'];
-    const knownNoiseAccounts = ['celebgossip', 'foodnetwork', 'espn'];
-    
-    if (knownTechAccounts.some(acc => author.includes(acc))) {
-      return {
-        score: 85,
-        isSignal: true,
-        category: 'high-signal',
-        reason: 'Known tech leader account',
-        confidence: 0.9,
-        method: 'heuristic'
-      };
-    }
-    
-    if (knownNoiseAccounts.some(acc => author.includes(acc))) {
-      return {
-        score: 5,
-        isSignal: false,
-        category: 'noise',
-        reason: 'Known entertainment account',
-        confidence: 0.9,
-        method: 'heuristic'
-      };
-    }
-    
-    // No strong signals either way - let LLM decide
-    return null;
-  }
-  
-  async loadCategoryWeights(category) {
-    try {
-      // Request category-specific weights from background script
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'getCategoryWeights',
-          category: category
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            extLog.warn('Failed to get category weights', { error: chrome.runtime.lastError.message });
-            resolve(null);
-          } else {
-            resolve(response);
-          }
-        });
-      });
-      
-      if (response && response.weights) {
-        // Merge category weights with defaults
-        this.weights = { ...this.defaultWeights, ...response.weights };
-      }
-    } catch (error) {
-      extLog.error('Failed to load category weights', { error: error.message, stack: error.stack });
-      // Fallback to default weights
-      this.weights = { ...this.defaultWeights };
-    }
   }
 
   extractTweetData(element) {
@@ -324,11 +120,19 @@ class TweetAnalyzer {
     
     // Extract links with more detail
     const linkElements = element.querySelectorAll('a[href^="http"]:not([href*="twitter.com"]):not([href*="x.com"])');
-    const links = Array.from(linkElements).map(link => ({
-      url: link.href,
-      text: link.innerText,
-      domain: new URL(link.href).hostname.replace('www.', '')
-    }));
+    const links = Array.from(linkElements).map(link => {
+      try {
+        return {
+          url: link.href,
+          text: link.innerText,
+          domain: new URL(link.href).hostname.replace('www.', '')
+        };
+      } catch (e) {
+        // Skip malformed URLs
+        extLog.debug('Skipping malformed URL', { href: link.href, error: e.message });
+        return null;
+      }
+    }).filter(Boolean); // Remove null entries
     
     const hasExternalLinks = links.length > 0;
     
@@ -392,57 +196,6 @@ class TweetAnalyzer {
     return Math.round(num);
   }
 
-  // Cache helper methods
-  getCachedAuthorScore(handle) {
-    const cached = this.authorCache.get(handle);
-    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
-      return cached.data;
-    }
-    return null;
-  }
-  
-  hashContent(text) {
-    // Simple hash for pattern matching (first 100 chars + length)
-    const normalized = text.toLowerCase().trim().substring(0, 100);
-    return `${normalized.length}_${normalized}`;
-  }
-  
-  cacheAnalysisResult(tweetData, result) {
-    // Cache by author if high confidence
-    if (tweetData.author?.handle && result.confidence >= 0.8) {
-      this.authorCache.set(tweetData.author.handle, {
-        data: {
-          score: result.score,
-          isSignal: result.isSignal,
-          category: result.category,
-          reason: `Cached from: ${result.reason}`,
-          confidence: result.confidence * 0.9 // Slightly reduce confidence for cached results
-        },
-        timestamp: Date.now()
-      });
-      
-      // Clean old cache entries if too large
-      if (this.authorCache.size > 500) {
-        const oldestKey = Array.from(this.authorCache.entries())
-          .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
-        this.authorCache.delete(oldestKey);
-      }
-    }
-    
-    // Cache by content pattern
-    const contentHash = this.hashContent(tweetData.text);
-    this.patternCache.set(contentHash, {
-      data: result,
-      timestamp: Date.now()
-    });
-    
-    // Clean pattern cache if too large
-    if (this.patternCache.size > 1000) {
-      const oldestKey = Array.from(this.patternCache.entries())
-        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
-      this.patternCache.delete(oldestKey);
-    }
-  }
 }
 
 // Export for use in content.js

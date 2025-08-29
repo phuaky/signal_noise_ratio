@@ -67,7 +67,8 @@ class AnalysisQueue {
         return;
       }
 
-      const promises = batch.map(async (tweetData) => {
+      // Process tweets sequentially with delay to avoid overwhelming server
+      for (const tweetData of batch) {
         try {
           if (tweetData.analyzer && typeof tweetData.analyzer.analyzeTweetElement === 'function') {
             await tweetData.analyzer.analyzeTweetElement(tweetData.element);
@@ -78,9 +79,10 @@ class AnalysisQueue {
           console.error('Error analyzing tweet:', error);
           this.pendingTweets.delete(tweetData.element);
         }
-      });
-
-      await Promise.all(promises);
+        
+        // Add small delay between tweets in batch
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
     } finally {
       this.processing = false;
       if (this.highPriorityQueue.length > 0 || this.lowPriorityQueue.length > 0) {

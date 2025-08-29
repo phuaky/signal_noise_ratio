@@ -10,6 +10,9 @@ class LLMService {
     this.retryDelay = 1000; // Start with 1 second
     this.healthCheckInterval = null;
     this.lastHealthCheck = 0;
+    this.hasLoggedDisconnection = false;
+    this.lastRequestTime = 0;
+    this.minRequestDelay = 200; // Minimum 200ms between requests
     
     // Initialize connection with retry logic
     this.initializeConnection();
@@ -80,7 +83,7 @@ class LLMService {
       
       if (this.connected) {
         if (!wasConnected) {
-          extLog.logConnection('connected', data.ollama);
+          this.hasLoggedDisconnection = false; // Reset flag when reconnected
           this.retryAttempts = 0; // Reset retry counter on successful connection
           this.startHealthChecks(); // Start health checks
           
@@ -88,7 +91,10 @@ class LLMService {
           this.notifyConnectionStatus(true, data.ollama.models);
         }
       } else {
-        extLog.warn('LLM Service: Server running but Ollama not connected');
+        if (!this.hasLoggedDisconnection) {
+          console.log('Ollama is not connected. Tweets will not be analyzed.');
+          this.hasLoggedDisconnection = true;
+        }
         if (wasConnected) {
           this.notifyConnectionStatus(false, null, 'Ollama disconnected');
         }
@@ -97,8 +103,12 @@ class LLMService {
       const wasConnected = this.connected;
       this.connected = false;
       
+      if (!this.hasLoggedDisconnection) {
+        console.log('Ollama is not connected. Tweets will not be analyzed.');
+        this.hasLoggedDisconnection = true;
+      }
+      
       if (wasConnected) {
-        extLog.logConnection('disconnected', { reason: 'Connection lost' });
         this.notifyConnectionStatus(false, null, error.message);
       }
       
@@ -129,23 +139,18 @@ class LLMService {
     if (!this.connected) {
       await this.checkConnection();
       if (!this.connected) {
-        if (window.SNR_DEBUG) extLog.debug('Not connected, falling back to heuristics');
-        return null; // Fallback to heuristics
+        return null; // No analysis when not connected
       }
     }
-
-    // Log analysis request
-    if (window.SNR_DEBUG) {
-      extLog.debug('Analyzing tweet with LLM', {
-        tweetPreview: tweetText.substring(0, 100) + (tweetText.length > 100 ? '...' : ''),
-        userPreferences: {
-          interests: userPreferences.interests?.length || 0,
-          signalPatterns: userPreferences.signalPatterns?.length || 0,
-          noisePatterns: userPreferences.noisePatterns?.length || 0,
-          threshold: userPreferences.threshold || 30
-        }
-      });
+    
+    // Rate limiting: ensure minimum delay between requests
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.minRequestDelay) {
+      await new Promise(resolve => setTimeout(resolve, this.minRequestDelay - timeSinceLastRequest));
     }
+    this.lastRequestTime = Date.now();
+
 
     // Implement retry logic for individual requests
     let lastError;
@@ -165,7 +170,9 @@ class LLMService {
         
         // Include full tweet data if available for multi-agent analysis
         if (tweetData) {
-          requestBody.tweetData = tweetData;
+          // Remove DOM element reference before sending (cannot be serialized)
+          const { element, ...cleanTweetData } = tweetData;
+          requestBody.tweetData = cleanTweetData;
           requestBody.userPreferences = userPreferences;
         }
         
@@ -176,25 +183,22 @@ class LLMService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
-          signal: AbortSignal.timeout(5000) // 5 second timeout per request
+          signal: AbortSignal.timeout(15000) // 15 second timeout per request
         });
 
         if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
+          const errorText = await response.text();
+          extLog.error('Server returned error', {
+            status: response.status,
+            error: errorText,
+            tweetPreview: tweetText.substring(0, 100)
+          });
+          throw new Error(`Server error: ${response.status} - ${errorText}`);
         }
 
         const result = await response.json();
         const clientLatency = Math.round(performance.now() - startTime);
         
-        // Log successful response
-        if (window.SNR_DEBUG) {
-          await extLog.logAnalysis({
-            ...result,
-            method: 'local-llm',
-            serverLatency: result.latency,
-            totalLatency: clientLatency
-          });
-        }
         
         // Add LLM-specific metadata
         return {
@@ -226,12 +230,9 @@ class LLMService {
     }
     
     // All retries failed
-    if (window.SNR_DEBUG) {
-      console.error('[LLM Service] All retries exhausted, falling back to heuristics');
-    }
     this.connected = false;
     this.checkConnection(); // Trigger reconnection attempt
-    return null; // Fallback to heuristics
+    return null; // No analysis when connection fails
   }
 
   async analyzeBatch(tweets, userInterests = []) {

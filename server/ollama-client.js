@@ -263,24 +263,17 @@ Examples:
   }
 
   async analyzeTweetBatch(tweets, userPreferences = {}) {
-    // Improved batch analysis with pre-filtering
+    // Process all tweets with LLM only
     const results = [];
     const needsLLM = [];
     
-    // First pass: apply heuristics
+    // Prepare all tweets for LLM analysis
     for (let i = 0; i < tweets.length; i++) {
-      const tweet = tweets[i];
-      const quickResult = this.quickHeuristicCheck(tweet.text);
-      
-      if (quickResult && quickResult.confidence >= 0.9) {
-        results[i] = quickResult;
-      } else {
-        needsLLM.push({ index: i, tweet });
-        results[i] = null; // Placeholder
-      }
+      needsLLM.push({ index: i, tweet: tweets[i] });
+      results[i] = null; // Placeholder
     }
     
-    // Second pass: batch LLM for ambiguous tweets
+    // Batch LLM for all tweets
     if (needsLLM.length > 0) {
       const batchPrompt = this.buildCompactBatchPrompt(needsLLM, userPreferences);
       
@@ -312,34 +305,6 @@ Examples:
     }
     
     return results;
-  }
-  
-  quickHeuristicCheck(text) {
-    const lower = text.toLowerCase();
-    
-    // Very high confidence signals
-    if (lower.includes('yc') || lower.includes('anthropic') || lower.includes('github.com')) {
-      return {
-        score: 90,
-        isSignal: true,
-        category: 'high-signal',
-        reason: 'Tech indicator',
-        confidence: 0.95
-      };
-    }
-    
-    // Very high confidence noise
-    if (lower.includes('celebrity') || lower.includes('recipe') || lower.includes('skincare')) {
-      return {
-        score: 10,
-        isSignal: false,
-        category: 'noise',
-        reason: 'Lifestyle content',
-        confidence: 0.95
-      };
-    }
-    
-    return null; // Needs LLM
   }
 
   buildCompactBatchPrompt(tweetsWithIndex, userPreferences) {

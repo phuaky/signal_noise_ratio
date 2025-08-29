@@ -242,10 +242,7 @@
   animation: slideIn 0.3s ease;
 }
 
-/* Ensure indicators don't interfere with Twitter's UI */
-[role="group"] {
-  position: relative !important;
-}
+/* Removed position: relative to prevent modal interference */
 
 /* Training Mode UI */
 .sn-training-toggle {
@@ -493,12 +490,15 @@
   color: white;
 }
 
-/* Training mode body class */
-.sn-training-mode [data-testid="tweet"] {
-  position: relative;
+/* Training mode removed to prevent interference */
+
+/* Modal detection - hide badges when overlays are active */
+.sn-indicator.hidden-for-modal {
+  display: none !important;
 }
 
-.sn-training-mode [data-testid="tweet"]:hover {
-  outline: 2px solid rgba(59, 130, 246, 0.3);
-  outline-offset: -2px;
+/* Hide badges when X's modal layers are active */
+body:has([aria-modal="true"]) .sn-indicator,
+body:has([role="dialog"]) .sn-indicator {
+  display: none !important;
 }

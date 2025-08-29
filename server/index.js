@@ -139,9 +139,17 @@ app.post('/analyze-multi-agent', async (req, res) => {
 app.post('/analyze', async (req, res) => {
   const { text, interests = [], signalPatterns = [], noisePatterns = [], threshold = 30 } = req.body;
   
-  if (!text) {
+  // Allow empty strings (for media-only tweets) but not undefined/null
+  if (text === undefined || text === null) {
+    logger.logError('Missing tweet text in request', new Error(`Missing text field in request body: ${JSON.stringify(req.body)}`), 'analyze-400');
     return res.status(400).json({ error: 'Tweet text is required' });
   }
+  
+  // Skip tweets without text
+  if (!text || text.trim().length === 0) {
+    return res.status(400).json({ error: 'No text content to analyze' });
+  }
+  const tweetText = text;
 
   // Build user preferences object
   const userPreferences = {
@@ -158,7 +166,7 @@ app.post('/analyze', async (req, res) => {
     const startTime = Date.now();
     
     // Always use simple content analysis
-    const result = await ollamaClient.analyzeContent(text, userPreferences);
+    const result = await ollamaClient.analyzeContent(tweetText, userPreferences);
     
     const latency = Date.now() - startTime;
 

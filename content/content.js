@@ -2,7 +2,6 @@
 (function() {
   const analyzer = new TweetAnalyzer();
   const analyzedTweets = new Map();
-  let trainingUI = null;
   let analysisQueue = null;
   let viewportObserver = null;
   let stats = {
@@ -17,7 +16,6 @@
     autoHide: false,
     showIndicators: true,
     threshold: 30,
-    enableTraining: true,
     enablePreAnalysis: true,
     preAnalysisBatchSize: 5,
     preAnalysisLookAhead: 500,
@@ -25,8 +23,12 @@
     debugMode: false
   };
 
+  // Track if initial setup is complete
+  let initialized = false;
+  let initialTweetsProcessed = false;
+  
   // Load settings
-  chrome.storage.local.get(['autoHide', 'showIndicators', 'threshold', 'enableTraining', 'useWaveform', 
+  chrome.storage.local.get(['autoHide', 'showIndicators', 'threshold', 'useWaveform', 
     'enablePreAnalysis', 'preAnalysisBatchSize', 'preAnalysisLookAhead', 'maxQueueSize', 'showReasoning', 'debugMode'], (stored) => {
     Object.assign(settings, stored);
     
@@ -38,6 +40,7 @@
     
     // Initialize components
     if (settings.enablePreAnalysis && window.AnalysisQueue && window.ViewportObserver) {
+      console.log('[SNR] Initializing pre-analysis queue');
       analysisQueue = new AnalysisQueue();
       analysisQueue.batchSize = settings.preAnalysisBatchSize || 5;
       analysisQueue.maxQueueSize = settings.maxQueueSize || 100;
@@ -45,11 +48,18 @@
       viewportObserver.lookAheadPixels = settings.preAnalysisLookAhead || 500;
     }
     
-    // Initialize training UI if enabled
-    if (settings.enableTraining) {
-      trainingUI = new TrainingUI();
-      trainingUI.observeNewTweets();
-    }
+    // Now that settings are loaded, initialize observer and process existing tweets
+    initializeObserver();
+    
+    // Process existing tweets after a small delay to avoid race conditions
+    setTimeout(() => {
+      if (!initialTweetsProcessed) {
+        processExistingTweets();
+        initialTweetsProcessed = true;
+      }
+    }, 500);
+    
+    initialized = true;
   });
 
   // Create floating dashboard
@@ -106,50 +116,89 @@
   // Call initialization after settings are loaded
   setTimeout(initializeVisualization, 100);
 
-  // Initialize observer
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) { // Element node
-          const tweets = node.querySelectorAll('[data-testid="tweet"]');
-          tweets.forEach(tweet => {
-            if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
-              handleTweetWithQueue(tweet);
-            } else {
-              analyzeTweetElement(tweet);
-            }
-          });
-          
-          // Also check if the node itself is a tweet
-          if (node.matches && node.matches('[data-testid="tweet"]')) {
-            if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
-              handleTweetWithQueue(node);
-            } else {
-              analyzeTweetElement(node);
+  // Initialize observer (called after settings are loaded)
+  let observer = null;
+  
+  function initializeObserver() {
+    if (observer) return; // Already initialized
+    
+    observer = new MutationObserver((mutations) => {
+      // Skip if we're still processing initial tweets
+      if (!initialTweetsProcessed) return;
+      
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1) { // Element node
+            const tweets = node.querySelectorAll('[data-testid="tweet"]');
+            tweets.forEach(tweet => {
+              if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
+                handleTweetWithQueue(tweet);
+              } else {
+                analyzeTweetElement(tweet);
+              }
+            });
+            
+            // Also check if the node itself is a tweet
+            if (node.matches && node.matches('[data-testid="tweet"]')) {
+              if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
+                handleTweetWithQueue(node);
+              } else {
+                analyzeTweetElement(node);
+              }
             }
           }
-        }
+        });
       });
     });
-  });
 
-  // Start observing
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+    // Start observing
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    
+    console.log('[SNR] MutationObserver initialized');
+  }
 
-  // Analyze existing tweets
-  document.querySelectorAll('[data-testid="tweet"]').forEach(tweet => {
-    if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
-      handleTweetWithQueue(tweet);
-    } else {
-      analyzeTweetElement(tweet);
-    }
-  });
+  // Process existing tweets (called after settings are loaded)
+  function processExistingTweets() {
+    const existingTweets = document.querySelectorAll('[data-testid="tweet"]');
+    console.log(`[SNR] Processing ${existingTweets.length} existing tweets`);
+    
+    existingTweets.forEach((tweet, index) => {
+      // Add a small delay to stagger the requests
+      setTimeout(() => {
+        if (settings.enablePreAnalysis && analysisQueue && viewportObserver) {
+          handleTweetWithQueue(tweet);
+        } else {
+          analyzeTweetElement(tweet);
+        }
+      }, index * 100); // 100ms delay between each tweet
+    });
+  }
   
   // Debug panel instance
   let debugPanel = null;
+
+
+  // Modal detection observer
+  const modalObserver = new MutationObserver(() => {
+    const hasModal = document.querySelector('[aria-modal="true"], [role="dialog"]');
+    document.querySelectorAll('.sn-indicator').forEach(indicator => {
+      if (hasModal) {
+        indicator.classList.add('hidden-for-modal');
+      } else {
+        indicator.classList.remove('hidden-for-modal');
+      }
+    });
+  });
+  
+  modalObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['aria-modal', 'role']
+  });
 
   // Add keyboard shortcut for debug mode toggle (Ctrl+Shift+D)
   document.addEventListener('keydown', (e) => {
@@ -216,12 +265,6 @@
     // Skip if already analyzed
     if (analyzedTweets.has(element)) return;
     
-    // Skip ads and promoted tweets
-    if (element.querySelector('[data-testid="promotedIndicator"]')) {
-      analyzedTweets.set(element, { isAd: true });
-      return;
-    }
-    
     // Determine priority based on viewport
     const isNearViewport = viewportObserver.isElementNearViewport(element);
     const priority = isNearViewport ? 'high' : 'low';
@@ -246,55 +289,12 @@
     // Skip if already analyzed
     if (analyzedTweets.has(element)) return;
 
-    // Skip ads and promoted tweets
-    if (element.querySelector('[data-testid="promotedIndicator"]')) {
-      analyzedTweets.set(element, { isAd: true });
-      return;
-    }
-
     // Analyze tweet
     const result = await analyzer.analyzeTweet(element);
     
     // If no result (LLM not available), skip this tweet
     if (!result) {
-      if (window.SNR_DEBUG) {
-        extLog.debug('No analysis available - LLM not connected');
-      }
       return;
-    }
-    
-    // Get category prediction if training is enabled
-    if (settings.enableTraining && trainingUI) {
-      try {
-        const tweetData = trainingUI.extractTweetData(element);
-        const response = await new Promise((resolve) => {
-          const timeout = setTimeout(() => {
-            extLog.warn('Category prediction timed out');
-            resolve(null);
-          }, 2000); // 2 second timeout
-          
-          chrome.runtime.sendMessage({
-            action: 'predictCategory',
-            tweetData: tweetData
-          }, (response) => {
-            clearTimeout(timeout);
-            if (chrome.runtime.lastError) {
-              extLog.warn('Chrome runtime error', { error: chrome.runtime.lastError.message });
-              resolve(null);
-            } else {
-              resolve(response);
-            }
-          });
-        });
-        
-        if (response && response.prediction) {
-          result.category = response.prediction.category;
-          result.categoryConfidence = response.prediction.confidence;
-          stats.categorizedCount++;
-        }
-      } catch (error) {
-        extLog.error('Category prediction failed', { error: error.message, stack: error.stack });
-      }
     }
     
     analyzedTweets.set(element, result);
@@ -371,11 +371,6 @@
       <span class="sn-label">${result.isSignal ? 'Signal' : 'Noise'}</span>
     `;
     
-    // Add category if predicted
-    if (result.category) {
-      badgeContent += `<span class="sn-category-label" style="margin-left: 6px; font-size: 10px; opacity: 0.8;">${result.category}</span>`;
-    }
-    
     // Add reasoning tooltip if enabled and available
     let reasoningTooltip = '';
     if (settings.showReasoning && result.reason) {
@@ -404,15 +399,8 @@
       `;
     }
     
-    // Determine badge class based on category
-    let badgeClass = 'noise';
-    if (result.category === 'high-signal') {
-      badgeClass = 'high-signal';
-    } else if (result.category === 'signal' || result.isSignal) {
-      badgeClass = 'signal';
-    } else if (result.category === 'medium') {
-      badgeClass = 'medium';
-    }
+    // Determine badge class based on signal/noise
+    let badgeClass = result.isSignal ? 'signal' : 'noise';
     
     indicator.innerHTML = `
       <div class="sn-badge ${badgeClass}" style="position: relative;">
@@ -421,13 +409,15 @@
       </div>
     `;
 
-    // Find the best place to insert indicator
-    const actionBar = element.querySelector('[role="group"]');
-    if (actionBar) {
-      actionBar.style.position = 'relative';
-      actionBar.appendChild(indicator);
+    // Find a safe place to insert indicator without modifying positioning
+    // First try to find the tweet's inner container
+    const tweetInner = element.querySelector('div[data-testid="tweet"] > div > div');
+    
+    if (tweetInner && tweetInner.firstChild) {
+      // Insert as first child of inner container
+      tweetInner.insertBefore(indicator, tweetInner.firstChild);
     } else {
-      element.style.position = 'relative';
+      // Fallback: append to tweet element itself
       element.appendChild(indicator);
     }
 
@@ -445,15 +435,8 @@
       });
     }
 
-    // Add border based on category
-    let borderColor = '#ef4444'; // Default red for noise
-    if (result.category === 'high-signal') {
-      borderColor = '#10b981'; // Green
-    } else if (result.category === 'signal' || result.isSignal) {
-      borderColor = '#10b981'; // Green
-    } else if (result.category === 'medium') {
-      borderColor = '#f59e0b'; // Amber
-    }
+    // Add border based on signal/noise
+    let borderColor = result.isSignal ? '#10b981' : '#ef4444'; // Green for signal, red for noise
     
     element.style.borderLeft = `3px solid ${borderColor}`;
     element.style.transition = 'border-color 0.3s';
@@ -617,16 +600,7 @@
           }
         }
         
-        // Initialize or destroy training UI based on setting
-        if (settings.enableTraining && !trainingUI) {
-          trainingUI = new TrainingUI();
-          trainingUI.observeNewTweets();
-        } else if (!settings.enableTraining && trainingUI) {
-          // Clean up training UI
-          document.querySelector('.sn-training-toggle')?.remove();
-          document.querySelector('.sn-category-selector')?.remove();
-          trainingUI = null;
-        }
+        // Training UI removed
         
         // Re-analyze all tweets with new settings
         analyzedTweets.clear();

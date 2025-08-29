@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     'interests',
     'signalPatterns',
     'noisePatterns',
-    'enableTraining',
     'enableParallelModels',
     'enabledModels',
     'enablePreAnalysis',
@@ -28,8 +27,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     'logPerformanceMetrics'
   ]);
 
-  // Local LLM is the only method now - no need to set radio buttons
-  // Remove API provider and key settings since we don't use them
+  // Set analysis method radio buttons
+  if (settings.useAI) {
+    document.querySelector('input[name="analysis-method"][value="cloud-ai"]').checked = true;
+  } else {
+    document.querySelector('input[name="analysis-method"][value="local-llm"]').checked = true;
+  }
   document.getElementById('show-indicators').checked = settings.showIndicators !== false;
   document.getElementById('auto-hide').checked = settings.autoHide || false;
   document.getElementById('show-dashboard').checked = settings.showDashboard !== false;
@@ -39,7 +42,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('interests').value = settings.interests || '';
   document.getElementById('signal-patterns').value = settings.signalPatterns || '';
   document.getElementById('noise-patterns').value = settings.noisePatterns || '';
-  document.getElementById('enable-training').checked = settings.enableTraining !== false;
   document.getElementById('enable-parallel-models').checked = settings.enableParallelModels || false;
   
   // Set pre-analysis settings
@@ -69,13 +71,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Update slider value display
   updateSliderValue();
   
-  // Load training data stats
-  loadTrainingStats();
   
   // Toggle parallel models config
   toggleParallelModelsConfig();
 
-  // No radio buttons for analysis method anymore
+  // Add event listeners for radio buttons
+  document.querySelectorAll('input[name="analysis-method"]').forEach(radio => {
+    radio.addEventListener('change', toggleMethodSettings);
+  });
+  toggleMethodSettings();
 
   document.getElementById('noise-threshold').addEventListener('input', updateSliderValue);
   document.getElementById('preanalysis-lookahead').addEventListener('input', updateSliderValue);
@@ -86,13 +90,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('export-data').addEventListener('click', exportData);
   document.getElementById('clear-data').addEventListener('click', clearData);
   
-  // Training data management
-  document.getElementById('export-training').addEventListener('click', exportTrainingData);
-  document.getElementById('import-training').addEventListener('click', () => {
-    document.getElementById('import-file').click();
-  });
-  document.getElementById('import-file').addEventListener('change', importTrainingData);
-  document.getElementById('clear-training').addEventListener('click', clearTrainingData);
   
   // Parallel models toggle
   document.getElementById('enable-parallel-models').addEventListener('change', toggleParallelModelsConfig);
@@ -102,7 +99,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   togglePreAnalysisSettings();
 });
 
-// Removed toggleMethodSettings - no longer needed since only local LLM is supported
+function toggleMethodSettings() {
+  const selectedMethod = document.querySelector('input[name="analysis-method"]:checked').value;
+  
+  // Show/hide relevant settings
+  document.getElementById('local-llm-settings').style.display = 
+    selectedMethod === 'local-llm' ? 'block' : 'none';
+  document.getElementById('api-settings').style.display = 
+    selectedMethod === 'cloud-ai' ? 'block' : 'none';
+  
+  // Check LLM connection if local LLM is selected
+  if (selectedMethod === 'local-llm') {
+    checkLLMConnection();
+  }
+}
 
 async function checkLLMConnection() {
   const statusEl = document.getElementById('llm-status');
@@ -159,10 +169,13 @@ function togglePreAnalysisSettings() {
 }
 
 async function saveSettings() {
-  // Always use local LLM, never cloud AI
+  const selectedMethod = document.querySelector('input[name="analysis-method"]:checked').value;
+  
   const settings = {
-    useAI: false,
-    useLocalLLM: true,
+    useAI: selectedMethod === 'cloud-ai',
+    useLocalLLM: selectedMethod === 'local-llm',
+    apiProvider: selectedMethod === 'cloud-ai' ? document.getElementById('api-provider')?.value : '',
+    apiKey: selectedMethod === 'cloud-ai' ? document.getElementById('api-key')?.value : '',
     showIndicators: document.getElementById('show-indicators').checked,
     autoHide: document.getElementById('auto-hide').checked,
     showDashboard: document.getElementById('show-dashboard').checked,
@@ -172,7 +185,6 @@ async function saveSettings() {
     interests: document.getElementById('interests').value,
     signalPatterns: document.getElementById('signal-patterns').value,
     noisePatterns: document.getElementById('noise-patterns').value,
-    enableTraining: document.getElementById('enable-training').checked,
     enableParallelModels: document.getElementById('enable-parallel-models').checked,
     enabledModels: {
       anthropic: document.getElementById('model-anthropic').checked,
@@ -213,7 +225,6 @@ async function saveSettings() {
               autoHide: settings.autoHide,
               showIndicators: settings.showIndicators,
               threshold: settings.threshold,
-              enableTraining: settings.enableTraining,
               enablePreAnalysis: settings.enablePreAnalysis,
               preAnalysisLookAhead: settings.preAnalysisLookAhead,
               preAnalysisBatchSize: settings.preAnalysisBatchSize,
@@ -302,114 +313,6 @@ async function clearData() {
   }
 }
 
-// Training data management functions
-async function loadTrainingStats() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getCategories' });
-    const categories = response.categories || [];
-    
-    const statsDiv = document.getElementById('category-stats');
-    
-    if (categories.length === 0) {
-      statsDiv.innerHTML = '<p>No training data yet. Start categorizing tweets to train the AI!</p>';
-      return;
-    }
-    
-    const totalExamples = categories.reduce((sum, cat) => sum + cat.count, 0);
-    
-    statsDiv.innerHTML = `
-      <p><strong>Total Training Examples:</strong> ${totalExamples}</p>
-      <div class="category-list">
-        ${categories.map(cat => `
-          <div class="category-item">
-            <span class="category-name">${cat.name}</span>
-            <span class="category-count">${cat.count}</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  } catch (error) {
-    console.error('Failed to load training stats:', error);
-  }
-}
-
-async function exportTrainingData() {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'exportTrainingData' });
-    
-    if (!response || !response.data) {
-      alert('No training data to export');
-      return;
-    }
-    
-    const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `training-data-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    // Show success
-    const btn = document.getElementById('export-training');
-    const originalText = btn.textContent;
-    btn.textContent = 'Exported!';
-    setTimeout(() => {
-      btn.textContent = originalText;
-    }, 2000);
-  } catch (error) {
-    console.error('Failed to export training data:', error);
-    alert('Failed to export training data');
-  }
-}
-
-async function importTrainingData(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    
-    const response = await chrome.runtime.sendMessage({
-      action: 'importTrainingData',
-      data: data
-    });
-    
-    if (response.success) {
-      alert('Training data imported successfully!');
-      loadTrainingStats(); // Reload stats
-    } else {
-      alert('Failed to import training data: ' + (response.error || 'Unknown error'));
-    }
-  } catch (error) {
-    console.error('Failed to import training data:', error);
-    alert('Failed to import training data. Make sure the file is valid.');
-  }
-  
-  // Clear the input
-  event.target.value = '';
-}
-
-async function clearTrainingData() {
-  if (!confirm('Are you sure you want to clear all training data? This cannot be undone.')) {
-    return;
-  }
-  
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'clearTrainingData' });
-    
-    if (response.success) {
-      alert('Training data cleared successfully');
-      loadTrainingStats(); // Reload stats
-    } else {
-      alert('Failed to clear training data');
-    }
-  } catch (error) {
-    console.error('Failed to clear training data:', error);
-    alert('Failed to clear training data');
-  }
-}
 
 function toggleParallelModelsConfig() {
   const enabled = document.getElementById('enable-parallel-models').checked;

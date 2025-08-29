@@ -25,14 +25,7 @@
       <h2>Analysis Method</h2>
       <div class="setting-group">
         <label class="radio-option">
-          <input type="radio" name="analysis-method" value="heuristic" checked>
-          <div class="radio-content">
-            <span class="radio-title">Heuristic Analysis</span>
-            <span class="radio-description">Fast, local analysis using patterns and rules</span>
-          </div>
-        </label>
-        <label class="radio-option">
-          <input type="radio" name="analysis-method" value="local-llm">
+          <input type="radio" name="analysis-method" value="local-llm" checked>
           <div class="radio-content">
             <span class="radio-title">Local LLM (Ollama)</span>
             <span class="radio-description">Private AI analysis using local models</span>
@@ -157,33 +150,6 @@
       </div>
     </section>
 
-    <section class="settings-section">
-      <h2>Training & Categories</h2>
-      <div class="setting-group">
-        <label class="toggle-setting">
-          <input type="checkbox" id="enable-training" checked>
-          <span class="toggle-slider"></span>
-          <div class="setting-info">
-            <span class="setting-title">Enable Training Mode</span>
-            <span class="setting-description">Train the AI by categorizing tweets</span>
-          </div>
-        </label>
-      </div>
-      
-      <div id="training-data-section" class="setting-group">
-        <h3>Training Data Management</h3>
-        <div class="category-stats" id="category-stats">
-          <p>Loading categories...</p>
-        </div>
-        
-        <div class="training-actions">
-          <button id="export-training" class="btn btn-secondary">Export Training Data</button>
-          <button id="import-training" class="btn btn-secondary">Import Training Data</button>
-          <input type="file" id="import-file" accept=".json" style="display: none;">
-          <button id="clear-training" class="btn btn-danger">Clear Training Data</button>
-        </div>
-      </div>
-    </section>
 
     <section class="settings-section">
       <h2>Pre-Analysis Settings</h2>
