@@ -331,24 +331,28 @@
       reasoningTooltip = `
         <div class="sn-reasoning-tooltip" style="
           display: none;
-          position: absolute;
-          bottom: 100%;
-          left: 50%;
-          transform: translateX(-50%);
-          margin-bottom: 8px;
-          background: rgba(0, 0, 0, 0.9);
+          position: fixed;
+          top: auto;
+          bottom: auto;
+          left: auto;
+          right: auto;
+          background: rgba(0, 0, 0, 0.95);
           color: white;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 12px;
+          padding: 10px 14px;
+          border-radius: 8px;
+          font-size: 13px;
+          line-height: 1.4;
           white-space: normal;
-          max-width: 300px;
-          z-index: 1000;
+          max-width: 320px;
+          min-width: 200px;
+          z-index: 10000;
           pointer-events: none;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.1);
         ">
-          <div style="font-weight: bold; margin-bottom: 4px;">AI Reasoning:</div>
-          ${result.reason}
-          <div style="font-size: 10px; opacity: 0.7; margin-top: 4px;">via ${result.confidence || 'analysis'}</div>
+          <div style="font-weight: bold; margin-bottom: 6px; color: #10b981;">🤖 AI Reasoning:</div>
+          <div style="margin-bottom: 6px;">${result.reason}</div>
+          <div style="font-size: 11px; opacity: 0.7; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 4px;">Confidence: ${Math.round((result.confidence || 0) * 100)}% | Score: ${result.score}</div>
         </div>
       `;
     }
@@ -380,12 +384,25 @@
       const badge = indicator.querySelector('.sn-badge');
       const tooltip = indicator.querySelector('.sn-reasoning-tooltip');
       
-      badge.addEventListener('mouseenter', () => {
-        if (tooltip) tooltip.style.display = 'block';
+      badge.addEventListener('mouseenter', (e) => {
+        if (tooltip) {
+          // Position tooltip near the mouse cursor
+          const rect = badge.getBoundingClientRect();
+          tooltip.style.display = 'block';
+          tooltip.style.left = Math.min(rect.left, window.innerWidth - 340) + 'px';
+          tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+          
+          // If tooltip would be off-screen, position it below instead
+          if (rect.top < 100) {
+            tooltip.style.top = (rect.bottom + 10) + 'px';
+          }
+        }
       });
       
       badge.addEventListener('mouseleave', () => {
-        if (tooltip) tooltip.style.display = 'none';
+        if (tooltip) {
+          tooltip.style.display = 'none';
+        }
       });
     }
 
