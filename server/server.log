@@ -1,7 +1,0 @@
-
-> signal-noise-server@1.0.0 start
-> node index.js
-
-[2025-08-23T14:38:25.436Z] Signal/Noise server running on port 3001
-[2025-08-23T14:38:25.553Z] Ollama Status: CONNECTED (4 models available)
-[2025-08-23T14:38:25.553Z] Available models: qwen3:latest, qwen2.5:7b, llama3.2:3b, llama3.2:1b

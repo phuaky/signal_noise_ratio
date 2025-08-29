@@ -76,7 +76,7 @@ class AnalysisQueue {
           this.processedTweets.add(tweetData.element);
           this.pendingTweets.delete(tweetData.element);
         } catch (error) {
-          console.error('Error analyzing tweet:', error);
+          extLog.error('Error analyzing tweet', { error: error.message });
           this.pendingTweets.delete(tweetData.element);
         }
         

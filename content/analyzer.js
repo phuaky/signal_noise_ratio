@@ -51,10 +51,9 @@ class TweetAnalyzer {
       }
     }
     
-    // TODO: Add cloud API support here when useAI is true
+    // Cloud API support will be implemented in future version
     if (this.settings.useAI && this.settings.apiKey) {
       // Cloud API implementation would go here
-      console.log('Cloud API analysis not yet implemented');
       return null;
     }
     
@@ -129,7 +128,6 @@ class TweetAnalyzer {
         };
       } catch (e) {
         // Skip malformed URLs
-        extLog.debug('Skipping malformed URL', { href: link.href, error: e.message });
         return null;
       }
     }).filter(Boolean); // Remove null entries

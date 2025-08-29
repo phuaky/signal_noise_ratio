@@ -18,7 +18,7 @@
   "content_scripts": [
     {
       "matches": ["https://twitter.com/*", "https://x.com/*"],
-      "js": ["utils/logger.js", "content/llm-service.js", "content/analyzer.js", "content/waveform.js", "content/analysis-queue.js", "content/viewport-observer.js", "content/debug-panel.js", "content/diagnostic-logger.js", "content/content.js"],
+      "js": ["utils/logger.js", "content/llm-service.js", "content/analyzer.js", "content/waveform.js", "content/analysis-queue.js", "content/viewport-observer.js", "content/content.js"],
       "css": ["content/styles.css"],
       "run_at": "document_idle"
     }

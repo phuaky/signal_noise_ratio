@@ -1,0 +1,30 @@
+{
+  "name": "signal-noise-ratio-extension",
+  "version": "1.0.0",
+  "description": "Privacy-first Chrome extension that analyzes X (Twitter) feed quality using local AI",
+  "scripts": {
+    "build": "npm run build:clean && npm run build:copy && npm run build:manifest",
+    "build:clean": "rm -rf dist && mkdir -p dist",
+    "build:copy": "cp -r assets background content options popup utils dist/ && cp manifest.json README.md LICENSE dist/",
+    "build:manifest": "node scripts/build-manifest.js",
+    "dev": "cd server && npm run dev",
+    "start": "cd server && npm start",
+    "test": "cd dev/server-tests && node test-suite.js"
+  },
+  "keywords": [
+    "chrome-extension",
+    "twitter",
+    "x",
+    "ai",
+    "ollama",
+    "privacy",
+    "signal-noise",
+    "social-media"
+  ],
+  "author": "Signal/Noise Ratio Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/signal_noise_ratio.git"
+  }
+}

@@ -27,12 +27,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     'logPerformanceMetrics'
   ]);
 
-  // Set analysis method radio buttons
-  if (settings.useAI) {
-    document.querySelector('input[name="analysis-method"][value="cloud-ai"]').checked = true;
-  } else {
-    document.querySelector('input[name="analysis-method"][value="local-llm"]').checked = true;
-  }
+  // Set analysis method radio buttons - only local LLM is supported
+  document.querySelector('input[name="analysis-method"][value="local-llm"]').checked = true;
   document.getElementById('show-indicators').checked = settings.showIndicators !== false;
   document.getElementById('auto-hide').checked = settings.autoHide || false;
   document.getElementById('show-dashboard').checked = settings.showDashboard !== false;

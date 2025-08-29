@@ -92,7 +92,6 @@ class LLMService {
         }
       } else {
         if (!this.hasLoggedDisconnection) {
-          console.log('Ollama is not connected. Tweets will not be analyzed.');
           this.hasLoggedDisconnection = true;
         }
         if (wasConnected) {
@@ -104,7 +103,6 @@ class LLMService {
       this.connected = false;
       
       if (!this.hasLoggedDisconnection) {
-        console.log('Ollama is not connected. Tweets will not be analyzed.');
         this.hasLoggedDisconnection = true;
       }
       
@@ -156,9 +154,6 @@ class LLMService {
     let lastError;
     for (let attempt = 0; attempt <= 2; attempt++) {
       try {
-        if (attempt > 0 && window.SNR_DEBUG) {
-          console.log(`[LLM Service] Retry attempt ${attempt + 1}/3`);
-        }
         
         const requestBody = {
           text: tweetText,
@@ -214,16 +209,10 @@ class LLMService {
         };
       } catch (error) {
         lastError = error;
-        if (window.SNR_DEBUG) {
-          console.warn(`[LLM Service] Attempt ${attempt + 1} failed:`, error.message);
-        }
         
         if (attempt < 2) {
           // Wait before retry with exponential backoff
           const delay = 500 * Math.pow(2, attempt);
-          if (window.SNR_DEBUG) {
-            console.log(`[LLM Service] Waiting ${delay}ms before retry...`);
-          }
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }

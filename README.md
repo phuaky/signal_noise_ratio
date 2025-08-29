@@ -26,10 +26,9 @@ Floating dashboard (bottom-right) shows:
 - Quick refresh button
 
 ### Advanced Features
-- **Training Mode**: Collect and export training data to improve the model
-- **Debug Panel**: Press Ctrl+Shift+D for detailed analysis logs
 - **Settings Export/Import**: Backup and share your configurations
 - **Performance Queue**: Optimized batch processing for smooth scrolling
+- **Open Source**: Full transparency and community-driven development
 
 ## 📦 Installation
 
@@ -65,10 +64,11 @@ ollama pull llama3.2:1b  # Fastest (1.3GB)
 
 ### Install the Extension
 
-1. **Clone the repository**
+1. **Download the extension**
    ```bash
    git clone https://github.com/yourusername/signal_noise_ratio.git
    cd signal_noise_ratio
+   npm run build  # Creates production build in dist/
    ```
 
 2. **Start the local server**
@@ -82,7 +82,7 @@ ollama pull llama3.2:1b  # Fastest (1.3GB)
    - Open `chrome://extensions/`
    - Enable **Developer mode** (top right)
    - Click **Load unpacked**
-   - Select the `signal_noise_ratio` folder
+   - Select the `dist/` folder (production build)
 
 4. **Navigate to X.com**
    - Go to [x.com](https://x.com) or [twitter.com](https://twitter.com)
@@ -133,7 +133,7 @@ Once installed, the extension works automatically:
 
 ### Keyboard Shortcuts
 
-- **Ctrl+Shift+D** - Toggle debug panel
+- **Ctrl+Shift+T** - Toggle training mode (if available)
 - **Ctrl+Shift+R** - Force re-analyze visible tweets
 - **Ctrl+Shift+T** - Toggle training mode
 
@@ -216,9 +216,9 @@ node test-tweet-analysis.js
    - Green "ON" = Connected
    - Red "OFF" = Disconnected
 
-4. **Enable debug mode**
-   - Press Ctrl+Shift+D on X.com
-   - Check console for errors
+4. **Check extension status**
+   - Extension badge should show "ON" when connected
+   - Visit X.com and look for colored badges on tweets
 
 ### Slow Analysis?
 
@@ -300,8 +300,8 @@ Contributions welcome! Please:
 cd server
 npm run dev
 
-# Enable debug logging
-localStorage.setItem('snr_debug', 'true')
+# Check connection status
+window.SNR_DEBUG = true; // Enable detailed logging in browser console
 ```
 
 ## 📄 License

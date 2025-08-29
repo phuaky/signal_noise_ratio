@@ -40,7 +40,6 @@
     
     // Initialize components
     if (settings.enablePreAnalysis && window.AnalysisQueue && window.ViewportObserver) {
-      console.log('[SNR] Initializing pre-analysis queue');
       analysisQueue = new AnalysisQueue();
       analysisQueue.batchSize = settings.preAnalysisBatchSize || 5;
       analysisQueue.maxQueueSize = settings.maxQueueSize || 100;
@@ -157,13 +156,11 @@
       subtree: true
     });
     
-    console.log('[SNR] MutationObserver initialized');
   }
 
   // Process existing tweets (called after settings are loaded)
   function processExistingTweets() {
     const existingTweets = document.querySelectorAll('[data-testid="tweet"]');
-    console.log(`[SNR] Processing ${existingTweets.length} existing tweets`);
     
     existingTweets.forEach((tweet, index) => {
       // Add a small delay to stagger the requests
@@ -177,8 +174,6 @@
     });
   }
   
-  // Debug panel instance
-  let debugPanel = null;
 
 
   // Modal detection observer
@@ -211,32 +206,6 @@
       const status = settings.debugMode ? 'enabled' : 'disabled';
       extLog.info(`Debug mode ${status}`);
       
-      // Toggle debug panel
-      if (settings.debugMode) {
-        if (!debugPanel && window.DebugPanel) {
-          debugPanel = new window.DebugPanel();
-          debugPanel.create();
-          
-          // Set global reference for logger
-          window.__snrDebugPanel = debugPanel;
-          window.debugPanel = debugPanel;
-          
-          // Listen for panel close event
-          window.addEventListener('snr-debug-panel-closed', () => {
-            debugPanel = null;
-            window.__snrDebugPanel = null;
-            window.debugPanel = null;
-            settings.debugMode = false;
-            window.SNR_DEBUG = false;
-            chrome.storage.local.set({ debugMode: false });
-          });
-        }
-      } else {
-        if (debugPanel) {
-          debugPanel.destroy();
-          debugPanel = null;
-        }
-      }
       
       // Show visual feedback
       const notification = document.createElement('div');
@@ -312,21 +281,6 @@
       snr_stats: stats 
     });
 
-    // Update debug panel if active
-    if (debugPanel) {
-      debugPanel.updateLastAnalysis(result);
-      debugPanel.addLog(
-        result.isSignal ? 'INFO' : 'DEBUG',
-        `Analyzed tweet: ${result.isSignal ? 'Signal' : 'Noise'} (${result.score})`,
-        {
-          score: result.score,
-          confidence: result.confidence,
-          method: result.method,
-          latency: result.latency,
-          reason: result.reason
-        }
-      );
-    }
 
     // Apply visual indicators
     if (settings.showIndicators) {

@@ -44,3 +44,7 @@ temp/
 
 # Server specific
 server/server.log
+
+# Development artifacts
+/dev/
+riper5.md

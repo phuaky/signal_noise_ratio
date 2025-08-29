@@ -1,7 +1,0 @@
-{
-  "text": "BREAKING: Celebrity drama and gossip that you won't believe!",
-  "interests": ["technology", "science"],
-  "signalPatterns": ["research", "data", "analysis"],
-  "noisePatterns": ["BREAKING", "celebrity", "gossip", "drama"],
-  "threshold": 30
-}
